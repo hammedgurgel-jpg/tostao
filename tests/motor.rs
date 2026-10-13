@@ -750,4 +750,13 @@ fn roteiro_8_pagamento_alem_da_divida_do_mes_anterior() {
     assert_eq!(c.cat(OUT, "pagamento-cartao").cash_overspent(), -10_000, "vermelho");
     assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (960_000, 950_000));
     assert_eq!((c.disponivel(NOV, "pagamento-cartao"), c.a_atribuir(9)), (0, -50_000));
+
+    // 8D: atribui 10 a Mercado e gasta 10 no cartão em Mercado: o +10 volta.
+    r.atribui("mercado", 10_000);
+    r.lanca("cartao", -10_000, Some("mercado"));
+    let c = r.calcula();
+    assert_eq!((c.conta("corrente"), c.conta("cartao")), (940_000, 0));
+    assert_eq!((c.atividade(OUT, "mercado"), c.disponivel(OUT, "mercado")), (-10_000, 0));
+    assert_eq!((c.atividade(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao")), (-50_000, 0));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (940_000, 940_000));
 }

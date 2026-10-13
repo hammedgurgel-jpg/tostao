@@ -502,6 +502,7 @@ Novembro é sempre o "Ready to Assign" de outubro mais o disponível negativo (v
 - Passo 0: Corrente 1.000, Cartão −50, setembro com Pagamento +50 / 50 e "A atribuir" −50, outubro com Pagamento 0 / 50 e "A atribuir" 950. **Conferido.**
 - 8B (pagamento de 50 como transferência): Corrente 950, Cartão 0, Pagamento de outubro −50 / 0, "A atribuir" 950 em outubro e em novembro; setembro não mudou. **Conferido.** A alternativa **só o mês** (1.000) está descartada: o pagamento da dívida de setembro não vai para o "A atribuir".
 - 8C (mais 10 da Corrente para o Cartão): Corrente 940, Cartão +10, Pagamento de outubro −60 / −10 (vermelho), "A atribuir" **960** em outubro e 950 em novembro; setembro não mudou. **Conferido.** O +10 do 5C vale também com dívida do mês anterior: só a parte do pagamento que passa da dívida vai para o "A atribuir". Teste `roteiro_8_pagamento_alem_da_divida_do_mes_anterior`.
+- 8D (atribui 10 a Mercado e gasta 10 no Cartão em Mercado): Corrente 940, Cartão 0, Mercado −10 / 0, Pagamento −50 / 0, "A atribuir" **940** em outubro e em novembro. **Conferido.** A alternativa **por ordem** (950) está descartada: gastar o crédito no mesmo mês desfaz o +10.
 
 #### Segunda tentativa (2026-10-13)
 
