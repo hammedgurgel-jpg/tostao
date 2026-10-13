@@ -649,65 +649,152 @@ Proporção: 60 × 30/100 = 18 no Cartão e 60 × 70/100 = 42 no Cartão 2. Se a
 
 #### Segunda tentativa — o que refazer
 
-As tabelas acima valiam para o orçamento limpo e sem o carregamento do "sem categoria". Para refazer, use as de baixo (teste `roteiro_9_segunda_tentativa_previsao`). A entrada de 100 do 9B **fica**: ela agora deixa a linha "sem categoria" com +100 em setembro, outubro e novembro, e isso muda o 9D.
+Valores do teste `roteiro_9_segunda_tentativa_previsao`. Cada lançamento tem uma ficha: **em que conta abrir**, a data (e o mês), de onde o dinheiro sai, para onde vai, os campos e o que muda depois de salvar. Se o "Depois de salvar" não acontecer, apague o lançamento e faça de novo antes de seguir.
 
-**Limpeza.**
-1. **Conta Corrente**: apague a saída de **60 em Mercado** (11/09) e a saída de **10 sem categoria** (13/10). Apague também a transferência de **300** para o Investimento (13/10); a ponta do Investimento some junto.
-2. **Cartão** e **Cartão 2**: apague os gastos em Farmácia (30 e 70). Os dois ficam com saldo 0.
-3. Plano de **novembro**: Farmácia = 0. Plano de setembro: Mercado continua com 50.
-4. Fica só: o "Starting Balance" de 1.000 (01/09) e a transferência de 100 do Investimento (01/09, sem categoria).
+Toda atribuição é feita na tela **Plan**: escolha o mês no topo (setas ao lado de "Sep 2026" / "Oct 2026"), clique na coluna **Assigned** da categoria e digite o valor.
+
+##### Etapa 1 — limpeza
+
+| # | Onde | O que fazer |
+|---|---|---|
+| 1 | Conta Corrente | Apagar a saída de **60**, 11/09, "Mensal: Mercado" |
+| 2 | Conta Corrente | Apagar a saída de **10**, 13/10, sem beneficiário ("This needs a category") |
+| 3 | Conta Corrente | Apagar a saída de **300**, 13/10, "Transfer: Investimento" (a ponta do Investimento some junto) |
+| 4 | Cartão | Apagar o gasto de **30** em Farmácia |
+| 5 | Cartão 2 | Apagar o gasto de **70** em Farmácia |
+| 6 | Plan, **Nov 2026** | Farmácia: Assigned = **0** |
+| 7 | Plan, **Sep 2026** | Mercado: Assigned continua **50** (não mexer) |
+
+Não apague a entrada de **100** de 01/09 ("Transfer: Investimento" na Corrente, "This needs a category"). Ela fica sem categoria.
+
+Confira:
 
 | Onde | Esperado |
 |---|---|
-| Corrente / Investimento / Cartão / Cartão 2 | 1.100 / −100 / 0 / 0 |
-| Mercado (Available) em setembro / outubro | 50 / 50 |
-| "Uncategorized Transactions" (Available) em setembro / outubro / novembro | 100 / 100 / 100 |
-| "Ready to Assign" de setembro / outubro / novembro | 950 / 950 / 950 |
+| Conta Corrente / Investimento / Cartão / Cartão 2 | 1.100 / −100 / 0 / 0 |
+| Sep 2026: Mercado (Available) / Uncategorized (Available) | 50 / 100 |
+| Oct 2026: Mercado / Uncategorized | 50 / 100 |
+| Ready to Assign: Sep / Oct / Nov | 950 / 950 / 950 |
 
-**Como não errar o tipo da transação.** Na primeira tentativa, três passos saíram de outro jeito: o pagamento virou gasto da Corrente em Mercado, o gasto no cartão virou saída da Corrente, e a transferência sem categoria ganhou "Inflow: Ready to Assign". Então:
-- o **gasto no cartão** é lançado **dentro da conta Cartão**: clique em "Cartão" na barra da esquerda e depois em Add Transaction. Confira que o saldo do **Cartão** mudou e o da Corrente não;
-- o **pagamento** é lançado na **Conta Corrente** com Payee **"Transfer : Cartão"** (ou "Payment: Cartão"), escolhido na lista de transferências. A Category fica "Category not needed". Confira que o **Cartão** mudou junto;
-- na **transferência sem categoria**, deixe a Category **vazia**. Não escolha "Inflow: Ready to Assign": isso tira o valor do "A atribuir" na hora (foi o que deu 640 na primeira tentativa).
+##### Etapa 2 (9A) — gasto no cartão e pagamento a mais, em setembro
 
-**9A.** No **Cartão**: Date **15/09/2026**, Payee qualquer, **Category: Mercado**, **Outflow 50**. Depois, na **Conta Corrente**: Date **20/09/2026**, Payee **"Transfer : Cartão"**, Category vazia ("Category not needed"), **Outflow 60**. O Cartão vai de −50 para **+10**.
+**Lançamento A1 — gasto no Cartão**
 
-| Onde | Esperado | Se der… |
-|---|---|---|
-| Corrente / Cartão | 1.040 / +10 | Cartão −50 → o pagamento não virou transferência; refaça |
-| Setembro: Mercado (Activity / Available) | −50 / 0 | |
-| Setembro: Pagamento do Cartão (Activity / Available) | −10 / −10 (vermelho) | |
-| Outubro: Pagamento do Cartão | 0 / 0 | −10 → o vermelho passa para o mês seguinte na categoria |
-| "Ready to Assign" de setembro / outubro / novembro | **960** / **950** / 950 | setembro 950 → o +10 não vale com gasto e pagamento no mesmo mês; outubro 960 → o vermelho não desconta na virada |
+| Campo | Valor |
+|---|---|
+| Abrir a conta | **Cartão** (barra da esquerda, grupo CREDIT) → Add Transaction |
+| Date | **15/09/2026** (setembro) |
+| Payee | qualquer nome novo, ex.: "Mercado X" |
+| Category | **Mensal: Mercado** |
+| Outflow | **50** |
+| Dinheiro sai de → chega em | Cartão (vira dívida) → ninguém, é gasto |
+| Depois de salvar | **Cartão −50**. A Corrente **não muda** (1.100) |
 
-**9C.** No plano de **outubro**, atribua **10** a Mercado. No **Cartão**: Date **13/10/2026**, Payee qualquer, **Category: Mercado**, **Outflow 10**. O Cartão vai de +10 para 0.
+**Lançamento A2 — pagamento do Cartão**
 
-| Onde | Esperado | Se der… |
-|---|---|---|
-| Corrente / Cartão | 1.040 / 0 | Corrente 1.030 → o gasto foi lançado na Corrente; refaça no Cartão |
-| Outubro: Mercado (Activity / Available) | −10 / 0 | |
-| Outubro: Pagamento do Cartão (Activity / Available) | **+10 / 10** | 0 / 0 → o gasto usa o crédito do cartão sem passar pela categoria de pagamento |
-| "Ready to Assign" de setembro / outubro / novembro | 950 / **940** / 940 | outubro 930 → gastar o crédito no mês seguinte também desfaz o +10 de setembro |
-| Novembro: Pagamento do Cartão | 10 | |
+| Campo | Valor |
+|---|---|
+| Abrir a conta | **Conta Corrente** (grupo CASH) → Add Transaction |
+| Date | **20/09/2026** (setembro) |
+| Payee | digite "Cartão" e escolha **"Transfer : Cartão"** ou **"Payment: Cartão"** na lista de transferências. Não use "Create payee" |
+| Category | não escolher nada; aparece **"Category not needed"** |
+| Outflow | **60** |
+| Dinheiro sai de → chega em | Conta Corrente → Cartão |
+| Depois de salvar | Corrente **1.040**; **Cartão +10** (era −50). A linha da Corrente **não** mostra "This needs a category" |
 
-**9D.** Na **Conta Corrente**: Date **13/10/2026**, Payee **"Transfer : Investimento"**, **Category vazia**, **Outflow 300**. O Investimento vai de −100 para **200**, e a linha da Corrente mostra "This needs a category".
-
-| Onde | Esperado | Se der… |
-|---|---|---|
-| Corrente / Investimento | 740 / 200 | |
-| Outubro: "Uncategorized Transactions" (Activity / Available) | −300 / **−200** (vermelho) | −300 → o positivo de setembro não é usado pelas saídas |
-| Novembro: "Uncategorized Transactions" | 0 (ou não aparece) | |
-| "Ready to Assign" de outubro / novembro | 940 / **740** | novembro 940 → o "sem categoria" de transferência não é estouro em dinheiro |
-
-**9E.** Plano de **outubro**: atribua **60** a Farmácia ("Ready to Assign" de outubro vai a **880**). No **Cartão**: Date 13/10/2026, **Category: Farmácia**, **Outflow 30** (Pagamento do Cartão em outubro vai a **40**). No **Cartão 2**: Date 13/10/2026, **Category: Farmácia**, **Outflow 70**.
+Confira:
 
 | Onde | Esperado | Se der… |
 |---|---|---|
-| Cartão / Cartão 2 | −30 / −70 | |
-| Outubro: Farmácia (Activity / Available) | −100 / −40 (amarelo) | |
-| Outubro: Pagamento do Cartão (Available) | **28** (10 + 18) | 40 → **por ordem** (o primeiro gasto é coberto primeiro) |
-| Outubro: Pagamento do Cartão 2 (Available) | **42** | 30 → **por ordem**; 60 → o último (ou o maior) é coberto primeiro |
-| "Ready to Assign" de setembro / outubro / novembro | 890 / 880 / **680** | novembro 640 → o estouro no crédito desconta (contradiz o roteiro 1) |
-| Novembro: Pagamento do Cartão / Cartão 2 | 28 / 42 | |
+| Sep 2026: Mercado (Activity / Available) | −50 / 0 | −110 → o pagamento virou gasto em Mercado; refaça o A2 |
+| Sep 2026: Credit Card Payments → Cartão (Activity / Available) | −10 / −10 (vermelho) | |
+| Oct 2026: Cartão em Credit Card Payments | 0 / 0 | −10 → o vermelho passa para o mês seguinte |
+| Ready to Assign: Sep / Oct / Nov | **960** / **950** / 950 | Sep 950 → o +10 não vale com gasto e pagamento no mesmo mês |
+
+##### Etapa 3 (9C) — gastar em outubro o crédito do cartão
+
+**Atribuição**: Plan, **Oct 2026**, Mercado, Assigned = **10**.
+
+**Lançamento C1 — gasto no Cartão**
+
+| Campo | Valor |
+|---|---|
+| Abrir a conta | **Cartão** → Add Transaction |
+| Date | **13/10/2026** (outubro) |
+| Payee | qualquer nome, ex.: "Mercado X" |
+| Category | **Mensal: Mercado** |
+| Outflow | **10** |
+| Dinheiro sai de → chega em | Cartão (usa o crédito de +10) → ninguém, é gasto |
+| Depois de salvar | **Cartão 0** (era +10). A Corrente **não muda** (1.040) |
+
+Confira:
+
+| Onde | Esperado | Se der… |
+|---|---|---|
+| Oct 2026: Mercado (Activity / Available) | −10 / 0 | |
+| Oct 2026: Cartão em Credit Card Payments (Activity / Available) | **+10 / 10** | 0 / 0 → o gasto usa o crédito sem passar pela categoria de pagamento |
+| Ready to Assign: Sep / Oct / Nov | 950 / **940** / 940 | Oct 930 → o +10 de setembro é desfeito em outubro |
+| Nov 2026: Cartão em Credit Card Payments | 10 | |
+
+##### Etapa 4 (9D) — transferência para o Investimento, sem categoria
+
+**Lançamento D1**
+
+| Campo | Valor |
+|---|---|
+| Abrir a conta | **Conta Corrente** → Add Transaction |
+| Date | **13/10/2026** (outubro) |
+| Payee | digite "Investimento" e escolha **"Transfer : Investimento"** na lista de transferências |
+| Category | **deixar vazio**. Não escolher "Inflow: Ready to Assign" |
+| Outflow | **300** |
+| Dinheiro sai de → chega em | Conta Corrente → Investimento |
+| Depois de salvar | Corrente **740**; **Investimento 200** (era −100). A linha da Corrente mostra **"This needs a category"** (é o esperado) |
+
+Confira:
+
+| Onde | Esperado | Se der… |
+|---|---|---|
+| Oct 2026: Uncategorized (Activity / Available) | −300 / **−200** (vermelho) | Available −300 → o positivo de setembro não é usado |
+| Nov 2026: Uncategorized | 0 ou não aparece | |
+| Ready to Assign: Oct / Nov | 940 / **740** | Oct 640 → ficou com "Inflow: Ready to Assign"; tire a categoria. Nov 940 → não é estouro em dinheiro |
+
+##### Etapa 5 (9E) — Farmácia em dois cartões, em outubro
+
+**Atribuição**: Plan, **Oct 2026** (não novembro), Farmácia, Assigned = **60**. Ready to Assign de outubro vai a **880**.
+
+**Lançamento E1 — gasto no Cartão**
+
+| Campo | Valor |
+|---|---|
+| Abrir a conta | **Cartão** → Add Transaction |
+| Date | **13/10/2026** |
+| Payee | qualquer nome, ex.: "Farmácia X" |
+| Category | **Farmácia** |
+| Outflow | **30** |
+| Depois de salvar | **Cartão −30**; Oct 2026, Cartão em Credit Card Payments: Available **40** |
+
+**Lançamento E2 — gasto no Cartão 2**
+
+| Campo | Valor |
+|---|---|
+| Abrir a conta | **Cartão 2** → Add Transaction |
+| Date | **13/10/2026** |
+| Payee | qualquer nome, ex.: "Farmácia X" |
+| Category | **Farmácia** |
+| Outflow | **70** |
+| Depois de salvar | **Cartão 2 −70** |
+
+Confira (Farmácia gastou 100 e tinha 60):
+
+| Onde | Esperado | Se der… |
+|---|---|---|
+| Oct 2026: Farmácia (Activity / Available) | −100 / −40 (amarelo) | |
+| Oct 2026: Cartão em Credit Card Payments (Available) | **28** (10 + 18) | 40 → o primeiro gasto é coberto primeiro |
+| Oct 2026: Cartão 2 em Credit Card Payments (Available) | **42** | 30 → o primeiro primeiro; 60 → o último (ou o maior) primeiro |
+| Ready to Assign: Sep / Oct / Nov | 890 / 880 / **680** | Nov 640 → o estouro no crédito desconta |
+| Nov 2026: Cartão / Cartão 2 em Credit Card Payments | 28 / 42 | |
+
+Mande uma captura do plano (Sep, Oct e Nov) e da tela "All Accounts" no fim de cada etapa.
 
 #### Primeira tentativa (2026-10-13)
 
