@@ -280,3 +280,5 @@ Outras funcionalidades ainda não olhadas:
 - regras de renomear beneficiário (`be_payee_rename_conditions`);
 - idade do dinheiro (`ageOfMoney`);
 - receita esperada (`be_expected_income`).
+
+Olhadas depois: transferências entre contas, inclusive o pagamento do cartão como transferência, na análise 03 (`03-transferencias.md`). Os detalhes de empréstimo que apareceram lá (`setDebtTransactionTypeIfNeeded`, categoria da dívida) continuam no primeiro item acima.
