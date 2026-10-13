@@ -34,6 +34,10 @@ _Evite_: lançamento, movimento
 Uma transação que se repete numa frequência (semanal, mensal, anual…) e gera transações nas próximas datas. As que vencem no mês contam como transações futuras nas metas.
 _Evite_: recorrente, lançamento futuro
 
+**Ocorrência**:
+Uma data em que a transação agendada deve gerar uma transação. A próxima ocorrência é a que ainda não foi gerada.
+_Evite_: instância, parcela
+
 **Subtransação**:
 Uma parte de uma transação dividida entre várias categorias; as partes somam o valor da transação.
 _Evite_: rateio, split
@@ -91,6 +95,32 @@ _Evite_: Ready to Assign, To be Budgeted, saldo livre
 **Atribuído no futuro**:
 A soma das atribuições de todos os meses depois de um mês; é a parte do disponível já comprometida adiante.
 _Evite_: reservado
+
+## Reconciliação
+
+**Não compensada**:
+Transação que ainda não foi conferida com o extrato do banco. Entra no saldo de trabalho, mas não no saldo compensado.
+_Evite_: pendente (pendente é a importada ainda não aceita)
+
+**Compensada**:
+Transação conferida com o extrato, mas que ainda pode ser desmarcada. Entra no saldo compensado.
+_Evite_: confirmada, conciliada
+
+**Reconciliada**:
+Transação fechada pela reconciliação. Não alterna de estado e pede confirmação antes de ser editada.
+_Evite_: travada, bloqueada
+
+**Saldo compensado**:
+A soma das transações compensadas e reconciliadas da conta. É o alvo da reconciliação.
+_Evite_: saldo do banco, saldo conferido
+
+**Saldo de trabalho**:
+O saldo compensado mais o das não compensadas: o saldo que o app mostra para a conta.
+_Evite_: saldo atual, saldo contábil
+
+**Ajuste de reconciliação**:
+Transação criada ao reconciliar, pela diferença entre o saldo do banco e o saldo compensado. Em conta orçamentária, entra como receita (A atribuir).
+_Evite_: correção, ajuste de saldo (ajuste de saldo é outra operação, feita sobre o saldo de trabalho)
 
 ## Sincronização
 

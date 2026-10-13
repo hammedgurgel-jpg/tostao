@@ -189,7 +189,7 @@ Totais usados na tela (80211):
   - É um registro histórico, não uma edição.
 - **Grupo de movimentações**: mês, origem, quem fez, quando, nota e, opcionalmente, a categoria removida que originou o grupo.
   - Ao remover uma categoria, o dinheiro dela é movido em grupo.
-- Não está claro se o atribuído das duas pontas muda junto (o mais provável) ou se é derivado das movimentações. Precisa ser verificado no fluxo de "mover dinheiro" da tela.
+- O atribuído das duas pontas muda junto, e a movimentação é o registro (resolvido na análise 02, §1).
 
 ## 7. Transações agendadas — visto (offsets 1835062 e 1980068)
 
@@ -198,6 +198,7 @@ Totais usados na tela (80211):
 - Transações têm uma **origem**: agendador, importação crua, pendente, importada, casada etc.
   - O painel do cartão ignora as importadas ainda não aceitas.
 - As "transações futuras" (`upcomingTransactions`) entram na falta total e no excesso das metas.
+- Geração das datas, identidade das transações geradas e divergência entre planejamento e geração: análise 02, §2.
 
 ## 8. O que falta e próximos alvos
 
@@ -214,14 +215,14 @@ Ainda não achamos:
 
 1. a fórmula do `overSpent` do mês (provável regra acima);
 2. o cálculo do saldo da categoria de pagamento do cartão (proposta acima);
-3. a geração das próximas datas das transações agendadas;
-4. como a movimentação de dinheiro altera o atribuído;
-5. o modo de arredondamento da moeda (`roundMilliDollars`).
+3. o modo de arredondamento da moeda (`roundMilliDollars`).
 
-Para os itens 2 a 4, o próximo passo é ler a biblioteca Kotlin do bundle (offsets ~1,30M–1,45M) com o REA (`trace_javascript_semantics`) e observar a tela num orçamento de teste.
+Resolvidos na análise 02: a geração das datas das agendadas (§2), como a movimentação altera o atribuído (§1) e a reconciliação de contas (§3).
+
+Para os itens 1 a 3, o próximo passo é observar a tela num orçamento de teste e, se preciso, ler a biblioteca Kotlin do bundle (offsets ~1,30M–1,45M).
 
 Outras funcionalidades ainda não olhadas:
-- contas de empréstimo/hipoteca (`isLoanAccount`, reconciliação);
+- regras de empréstimo/hipoteca além da reconciliação (`isLoanAccount`);
 - regras de renomear beneficiário (`be_payee_rename_conditions`);
 - idade do dinheiro (`ageOfMoney`);
 - receita esperada (`be_expected_income`);
