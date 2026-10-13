@@ -705,11 +705,10 @@ fn roteiro_8_segunda_tentativa_sem_transferencia() {
 }
 
 #[test]
-#[ignore = "diverge da tela: estorno no cartão sem dívida (roteiro 8E, segunda tentativa)"]
 fn roteiro_8e_estorno_com_cartao_sem_divida() {
     // Na tela: estorno de 20 em Mercado num cartão com saldo 0 e categoria
     // de pagamento com 0. Mercado +20 / 80, cartão +20, A atribuir 940, e a
-    // categoria de pagamento ficou em 0 / 0. O motor tira os 20 dela (−20).
+    // categoria de pagamento ficou em 0 / 0.
     let mut r = roteiro_8_segunda_tentativa();
     r.atribui("mercado", 10_000);
     r.lanca("cartao", 20_000, Some("mercado"));
@@ -759,4 +758,15 @@ fn roteiro_8_pagamento_alem_da_divida_do_mes_anterior() {
     assert_eq!((c.atividade(OUT, "mercado"), c.disponivel(OUT, "mercado")), (-10_000, 0));
     assert_eq!((c.atividade(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao")), (-50_000, 0));
     assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (940_000, 940_000));
+
+    // 8E: apaga o gasto do 8D e lança um estorno de 20 no cartão em Mercado.
+    let gasto = r.orc.transacoes.iter().rev().find(|t| t.conta == "cartao" && t.valor == -10_000).unwrap().id.clone();
+    r.remove(&gasto);
+    r.lanca("cartao", 20_000, Some("mercado"));
+    let c = r.calcula();
+    assert_eq!((c.conta("corrente"), c.conta("cartao")), (940_000, 30_000));
+    assert_eq!((c.atividade(OUT, "mercado"), c.disponivel(OUT, "mercado")), (20_000, 30_000));
+    assert_eq!((c.atividade(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao")), (-80_000, -30_000));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (970_000, 940_000));
+    assert_eq!((c.disponivel(NOV, "mercado"), c.disponivel(NOV, "pagamento-cartao")), (30_000, 0));
 }

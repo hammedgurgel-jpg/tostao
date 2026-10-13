@@ -497,12 +497,14 @@ A atribuição sozinha leva o "Ready to Assign" de 960 a 950; o gasto, pela regr
 
 Novembro é sempre o "Ready to Assign" de outubro mais o disponível negativo (vermelho) do Pagamento em outubro. Ex.: 8C, 960 − 10 = 950. Se outubro bater e novembro não, o erro está na virada, não na regra. Se outubro não bater com nenhuma coluna, anote o valor: ele ajuda a achar a regra certa.
 
-#### Terceira tentativa (2026-10-13), em andamento
+#### Terceira tentativa (2026-10-13)
 
 - Passo 0: Corrente 1.000, Cartão −50, setembro com Pagamento +50 / 50 e "A atribuir" −50, outubro com Pagamento 0 / 50 e "A atribuir" 950. **Conferido.**
 - 8B (pagamento de 50 como transferência): Corrente 950, Cartão 0, Pagamento de outubro −50 / 0, "A atribuir" 950 em outubro e em novembro; setembro não mudou. **Conferido.** A alternativa **só o mês** (1.000) está descartada: o pagamento da dívida de setembro não vai para o "A atribuir".
 - 8C (mais 10 da Corrente para o Cartão): Corrente 940, Cartão +10, Pagamento de outubro −60 / −10 (vermelho), "A atribuir" **960** em outubro e 950 em novembro; setembro não mudou. **Conferido.** O +10 do 5C vale também com dívida do mês anterior: só a parte do pagamento que passa da dívida vai para o "A atribuir". Teste `roteiro_8_pagamento_alem_da_divida_do_mes_anterior`.
 - 8D (atribui 10 a Mercado e gasta 10 no Cartão em Mercado): Corrente 940, Cartão 0, Mercado −10 / 0, Pagamento −50 / 0, "A atribuir" **940** em outubro e em novembro. **Conferido.** A alternativa **por ordem** (950) está descartada: gastar o crédito no mesmo mês desfaz o +10.
+- 8E (apaga o gasto do 8D; estorno de 20 no Cartão em Mercado): Corrente 940, Cartão +30, Mercado +20 / 30, Pagamento −80 / −30 (vermelho), "A atribuir" **970** em outubro e 940 em novembro (Mercado 30 e Pagamento 0 em novembro). **Conferido.** A alternativa **só pagamento** (960) está descartada.
+- Com o 8E, os três estornos vistos fecham numa regra (`estorno_limitado` em `src/motor.rs`): **o estorno coberto só sai da categoria de pagamento na parte que reduz a dívida do cartão ou que vai para o "A atribuir"**; a parte que só deixa o cartão positivo fica na categoria do estorno. Primeira tentativa: reduziu a dívida, saiu 20. Segunda: cartão em 0 e sem pagamento no mês, não saiu nada. Terceira: depois de pagar além da dívida, saiu 20 e foi para o "A atribuir". O teste da segunda tentativa deixou de ser `#[ignore]`.
 
 #### Segunda tentativa (2026-10-13)
 
@@ -510,7 +512,7 @@ Os pagamentos **de novo não viraram transferência**: o Cartão ficou em 0 e a 
 - 8D: atribuir 10 e gastar 10 no cartão em Mercado: Mercado −10 / 50, Pagamento +10 / 10, cartão −10, "A atribuir" 940;
 - 8F como lançado (sem atribuição em outubro, 10 no cartão em Mercado, coberto pela sobra de setembro): Mercado −10 / 40, Pagamento +10 / 10, "A atribuir" 950.
 
-**Diverge do motor — 8E:** estorno de 20 em Mercado num cartão **sem dívida** (saldo 0, Pagamento 0 / 0). Na tela: Mercado +20 / 80, cartão **+20**, "A atribuir" 940, e o **Pagamento ficou 0 / 0**. O motor tira os 20 do Pagamento (−20 / −20), como na primeira tentativa, em que o cartão tinha dívida de 50 e o Pagamento foi de 50 para 30. Teste `roteiro_8e_estorno_com_cartao_sem_divida`, marcado `#[ignore]` até achar a regra. Duas explicações cabem nos dois casos:
+**Divergia do motor — 8E** (resolvido na terceira tentativa, acima): estorno de 20 em Mercado num cartão **sem dívida** (saldo 0, Pagamento 0 / 0). Na tela: Mercado +20 / 80, cartão **+20**, "A atribuir" 940, e o **Pagamento ficou 0 / 0**. O motor tira os 20 do Pagamento (−20 / −20), como na primeira tentativa, em que o cartão tinha dívida de 50 e o Pagamento foi de 50 para 30. Teste `roteiro_8e_estorno_com_cartao_sem_divida`, marcado `#[ignore]` até achar a regra. Duas explicações cabem nos dois casos:
 - o estorno só tira da categoria de pagamento o que ela tem disponível (não a deixa negativa);
 - o estorno só tira da categoria de pagamento até o tamanho da dívida do cartão.
 
@@ -554,9 +556,9 @@ Fechadas com o usuário em 2026-10-13. Nenhuma ficou adiada.
 - A soma do servidor para receita e categorias com transferências (só inferida pelos painéis do cliente).
 - ~~Se uma entrada sem categoria vinda de acompanhamento entra no "A atribuir"~~: não entra, conferido no roteiro 4B. Ela fica na linha "sem categoria" com saldo positivo. Falta saber o que acontece com esse saldo positivo na virada do mês.
 - Por que pagar o cartão além da dívida (saldo do cartão positivo) aumentou o "A atribuir" em 10 (roteiro 5C), e por que ele não voltou quando o crédito saiu do cartão (5D).
-  - Roteiro 8 (§9) para conferir; duas tentativas lançaram o pagamento sem transferência.
-- Estorno no cartão: com dívida, sai da categoria de pagamento (roteiro 8, primeira tentativa); sem dívida, não sai (segunda tentativa, 8E). O motor ainda tira sempre.
-  - **Regra inferida** usada em `src/motor.rs` (`pagamento_alem_da_divida`): a parte dos pagamentos do mês que deixa o cartão com saldo positivo, além do saldo positivo que ele já tinha no fim do mês anterior, vai para o "A atribuir" do mês (`additional_to_be_budgeted`). Ela continua saindo da categoria de pagamento. Os gastos do cartão contam; as transferências que saem dele para conta orçamentária não. Fecha com 5A–5D e novembro, mas só esse caso foi visto. Falta conferir na tela: pagar a mais com dívida de mês anterior, e gastar no cartão com saldo positivo.
+  - **Conferido no roteiro 8** (8B a 8E): o pagamento da dívida do mês anterior não soma; o que passa da dívida soma; gastar o crédito no mesmo mês desfaz; estorno depois do excesso soma. Falta o 8F.
+- Estorno no cartão: só sai da categoria de pagamento na parte que reduz a dívida ou vai para o "A atribuir" (roteiro 8, três tentativas; `estorno_limitado`).
+  - Regra usada em `src/motor.rs` (`pagamento_alem_da_divida`): a parte dos pagamentos do mês que deixa o cartão com saldo positivo, além do saldo positivo que ele já tinha no fim do mês anterior, vai para o "A atribuir" do mês (`additional_to_be_budgeted`). Ela continua saindo da categoria de pagamento. Os gastos do cartão contam; as transferências que saem dele para conta orçamentária não. Fecha com 5A–5D e novembro, mas só esse caso foi visto. Falta conferir na tela: pagar a mais com dívida de mês anterior, e gastar no cartão com saldo positivo.
 - Os nomes internos `transfer_on_budget`, `transfer`, `transfer_off_budget` (66689): onde são usados.
 - Regras de empréstimo (`setDebtTransactionTypeIfNeeded`, categoria da dívida).
 - Se o servidor do YNAB valida ou conserta pares quebrados.

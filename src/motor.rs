@@ -414,23 +414,24 @@ pub fn calcular(orcamento: &Orcamento) -> Calculos {
             // Lançado direto na categoria de pagamento (sem ser transferência):
             // conta como saída dela.
             let direto = saidas.get(&(c.id.as_str(), mes)).map_or(0, |s| s.dinheiro + s.credito);
+            let saldo_anterior = saldos.no_fim_de(cartao, add_months(mes, -1));
+            let excesso = pagamento_alem_da_divida(saldo_anterior, movimento);
             let mut calc = SubCategoryMonthCalc {
                 month: mes,
                 budgeted: atribuido.get(&(c.id.as_str(), mes)).copied().unwrap_or(0),
                 cash_outflows: Some(direto - movimento.pagamentos),
-                budgeted_spending: funded_spending_on_card(&partes),
+                budgeted_spending: estorno_limitado(funded_spending_on_card(&partes), saldo_anterior, movimento, excesso),
                 ..Default::default()
             };
             let previa = anterior_da(&c.id);
             calculate_credit_card_payment_balance(&mut calc, previa, round);
             calculate_budgeted_cash_credit_outflows(&mut calc);
-            let saldo_anterior = saldos.no_fim_de(cartao, add_months(mes, -1));
             if let Some(meta) = &c.meta {
                 let saldo_do_cartao = Some(saldos.no_fim_de(cartao, mes));
                 let tipo = CategoryType::CreditCardPayment;
                 calculate_goals(&mut calc, previa, meta, tipo, saldo_do_cartao, orcamento.casas_decimais);
             }
-            adicional += pagamento_alem_da_divida(saldo_anterior, movimento);
+            adicional += excesso;
             calculadas.push(CalculoCategoria { categoria: c.id.clone(), calculo: calc });
         }
         // Na ordem de `orcamento.categorias`.
@@ -472,15 +473,39 @@ pub fn calcular(orcamento: &Orcamento) -> Calculos {
 /// (`additional_to_be_budgeted`), mas continua saindo da categoria de
 /// pagamento.
 ///
-/// **Inferido.** Não está no bundle (é soma do servidor). Fecha com o
-/// roteiro 5 da análise 03: pagar 70 de uma dívida de 60 levou o "A atribuir"
-/// de 1.000 a 1.010, e devolver os 10 do cartão para a corrente não o trouxe
-/// de volta. O campo `additionalToBeBudgeted` existe só na categoria de
-/// pagamento do cartão (análise 01, §3), o que sugere que o acréscimo vem
-/// dela. Só um caso foi visto na tela.
+/// Não está no bundle (é soma do servidor). **Conferido na tela** nos
+/// roteiros 5 e 8 da análise 03: pagar além da dívida (inclusive a do mês
+/// anterior) soma o excesso ao "A atribuir"; devolver o crédito para a
+/// corrente não o desfaz; gastar o crédito no mesmo mês desfaz; um estorno
+/// no cartão depois de pagar além da dívida também soma. O campo
+/// `additionalToBeBudgeted` existe só na categoria de pagamento do cartão
+/// (análise 01, §3).
 fn pagamento_alem_da_divida(saldo_anterior: i64, mes: Cartao) -> i64 {
+    saldo_positivo_novo(saldo_anterior, mes).min(mes.pagamentos.max(0))
+}
+
+/// Quanto o cartão ficou positivo no mês além do saldo positivo que já tinha.
+fn saldo_positivo_novo(saldo_anterior: i64, mes: Cartao) -> i64 {
     let depois = saldo_anterior + mes.pagamentos + mes.gastos;
-    (depois.max(0) - saldo_anterior.max(0)).clamp(0, mes.pagamentos.max(0))
+    (depois.max(0) - saldo_anterior.max(0)).max(0)
+}
+
+/// Gasto coberto que passa para a categoria de pagamento (`budgeted_spending`),
+/// com o estorno limitado: um estorno coberto (`coberto > 0`) só sai da
+/// categoria de pagamento na parte que reduz a dívida do cartão ou que vai
+/// para o "A atribuir" ([`pagamento_alem_da_divida`]). A parte que só deixa o
+/// cartão positivo fica na categoria do estorno, sem sair do pagamento.
+///
+/// Conferido na tela (roteiro 8 da análise 03): estorno de 20 com dívida de
+/// 50 tirou 20 do pagamento; com cartão em 0 e sem pagamento no mês, não
+/// tirou nada; depois de pagar além da dívida, tirou 20 e o "A atribuir"
+/// subiu 20.
+fn estorno_limitado(coberto: i64, saldo_anterior: i64, mes: Cartao, excesso: i64) -> i64 {
+    if coberto <= 0 {
+        return coberto;
+    }
+    let so_positivo = saldo_positivo_novo(saldo_anterior, mes) - excesso;
+    (coberto - so_positivo).max(0)
 }
 
 /// Transações que entram no saldo da conta: nem removidas nem cruas.
