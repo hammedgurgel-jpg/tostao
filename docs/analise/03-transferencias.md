@@ -529,6 +529,123 @@ Na tela, o dinheiro fechou: Corrente 940 + Cartão 20 = 960 = "A atribuir" 940 +
 - 8E: estorno de 20 no cartão em Mercado: Mercado +20 / 30, **Pagamento −20 / 30**, cartão −30, "A atribuir" 940. **Conferido**: o estorno coberto no cartão sai da categoria de pagamento (`budgeted_spending` positivo);
 - 8F como lançado (10 sem categoria no cartão): sem categoria −70, Pagamento 0 / 50 (amarelo), cartão −60, "A atribuir" 950.
 
+### Roteiro 9 — virada do mês, "sem categoria" positivo e dois cartões
+
+**Para que serve.** Conferir quatro regras do motor (`src/motor.rs`) que ainda são inferidas:
+- **9A, virada com o cartão positivo**: pagar além da dívida em setembro e ver outubro sem nada lançado. O motor assume que nada muda na virada: o +10 fica em setembro, e o vermelho do Pagamento desconta de outubro. (Novembro do 8C já mostrou isso uma vez; aqui o mês seguinte é outubro, para o 9C poder lançar nele.)
+- **9B, "sem categoria" positivo** (roteiro 4B): uma entrada sem categoria vinda do Investimento fica na linha "sem categoria" com saldo positivo e não entra no "A atribuir". O motor **não carrega nada** para o mês seguinte: os 100 somem do plano em outubro.
+- **9C, gastar no mês seguinte o crédito do cartão**: o motor compara com o saldo positivo que o cartão já tinha no fim do mês anterior, então o gasto **não** desfaz o +10 de setembro e passa para a categoria de pagamento, como um gasto comum.
+- **9D, roteiro 4E**: transferência da Corrente para o Investimento sem categoria. Esperado: "sem categoria" −300 em vermelho, que desconta do "A atribuir" de novembro.
+- **9E, uma categoria que gasta em dois cartões** com dinheiro só para parte do gasto (análise 01, §8; `funded_spending_on_card` em `src/calc.rs`). O motor divide a parte coberta entre os cartões **na proporção do gasto**. É regra nossa.
+
+Cabe tudo num orçamento só. Ficou de fora: um estorno no mês seguinte com o cartão positivo, e pagar além da dívida em dois meses seguidos.
+
+Os valores esperados saem do próprio motor. Os passos se acumulam: cada um parte do anterior. Se um passo der diferente, anote o valor e siga; os seguintes ainda servem, mas a diferença pode se repetir neles.
+
+#### Ponto de partida
+
+Use o orçamento TESTE. **Antes de começar, mande uma captura** de cada conta (Conta Corrente, Cartão, Investimento) e do plano de setembro e outubro, para conferir o que sobrou do roteiro 8.
+
+**Passo 0 — limpar.**
+1. **Conta Corrente**: apague tudo, menos o "Starting Balance" de 1.000. Os pagamentos do roteiro 8 ("Payment: Cartão") somem também do Cartão. Abra o "Starting Balance" e mude a **Date** para **01/09/2026** (a categoria continua "Inflow: Ready to Assign").
+2. **Cartão**: apague tudo (inclusive o gasto de 15/09). Saldo 0.
+3. **Investimento**: apague tudo. Saldo 0.
+4. **Poupança**: não é usada; deixe como está.
+5. No plano de **setembro** e de **outubro**: atribuído = 0 em todas as categorias (Mercado tinha 50 em setembro).
+
+Confira:
+
+| Onde | Esperado |
+|---|---|
+| Conta Corrente / Cartão / Investimento | 1.000 / 0 / 0 |
+| "Ready to Assign" de setembro / outubro / novembro | 1.000 / 1.000 / 1.000 |
+| Linha "Uncategorized Transactions" | não aparece em nenhum mês |
+
+#### Como lançar uma transferência
+
+Toda transferência é lançada **na conta de onde o dinheiro sai**, com o beneficiário da lista de **transferências**:
+1. Abra a conta de origem e clique em **Add Transaction**.
+2. **Date**: a do passo. Nunca depois de 13/10/2026: data futura vira agendada.
+3. **Payee**: digite o nome da outra conta e escolha a opção da lista de transferências ("Transfer : …" ou "Payment: …"). Não escolha "Create payee".
+4. **Category**: a do passo.
+5. **Outflow**: o valor. Salve.
+
+Para saber se virou transferência: **o saldo da outra conta muda junto**, e a outra conta mostra a ponta com "Transfer : (conta de origem)" ou "Payment: (conta de origem)". Se a outra conta não mudar, apague e lance de novo.
+
+No pagamento do cartão (9A), o pagamento é transferência entre orçamentárias: depois de escolher o Payee aparece "Category not needed", e a linha **não** pode mostrar "This needs a category". Outra forma: abrir o **Cartão** e usar **Record Payment**, com a Conta Corrente como origem.
+
+Nas transferências com o Investimento (9B e 9D), a ponta da Conta Corrente **mostra** "This needs a category": é o esperado, porque o passo pede para deixar sem categoria. A ponta do Investimento não tem coluna de categoria.
+
+#### Passos
+
+Em cada passo, anote: saldo das contas; Activity e Available do que a tabela pede (e a cor); "Ready to Assign" dos meses da tabela. O "Ready to Assign" de setembro muda quando se atribui em outubro (ele desconta o que já foi atribuído nos meses seguintes); por isso só é pedido no 9A e no 9B.
+
+**9A — paga além da dívida em setembro.**
+1. No plano de **setembro**, atribua **50** a Mercado.
+2. No **Cartão**: Add Transaction, Date **15/09/2026**, Payee qualquer (ex.: "Mercado X"), **Category: Mercado**, **Outflow 50**.
+3. Na **Conta Corrente**: Add Transaction, Date **20/09/2026**, Payee **"Transfer : Cartão"** (ou "Payment: Cartão"), Category em branco ("Category not needed"), **Outflow 60**. Confira que o Cartão foi de −50 para **+10**.
+
+| Onde | Esperado | Se der… |
+|---|---|---|
+| Corrente / Cartão | 940 / +10 | Cartão −50 → o pagamento não virou transferência; refaça o passo 3 |
+| Setembro: Mercado (Activity / Available) | −50 / 0 | |
+| Setembro: Pagamento do Cartão (Activity / Available) | −10 / −10 (vermelho) | |
+| "Ready to Assign" de setembro | **960** | 950 → o +10 não vale quando o gasto e o pagamento são do mesmo mês |
+| Outubro: Pagamento do Cartão | 0 / 0 | −10 → o vermelho passa para o mês seguinte na categoria |
+| "Ready to Assign" de outubro / novembro | **950** / 950 | outubro 960 → o vermelho do Pagamento não desconta na virada |
+
+**9B — entrada sem categoria vinda do Investimento, em setembro.** No **Investimento**: Add Transaction, Date **20/09/2026**, Payee **"Transfer : Conta Corrente"**, **Outflow 100**. Confira que a Corrente foi de 940 para **1.040** e que nela a entrada de 100 mostra "This needs a category". **Não categorize.**
+
+| Onde | Esperado | Se der… |
+|---|---|---|
+| Corrente / Investimento | 1.040 / −100 | |
+| Setembro: "Uncategorized Transactions" (Activity / Available) | +100 / +100 | |
+| "Ready to Assign" de setembro | 960 (não muda) | 1.060 → a entrada sem categoria é receita (contradiz o 4B) |
+| Outubro: "Uncategorized Transactions" | **não aparece** (ou 0) | +100 → o saldo positivo é carregado para o mês seguinte |
+| "Ready to Assign" de outubro / novembro | **950** / 950 | outubro 1.050 → o positivo sem categoria vira "A atribuir" no mês seguinte |
+
+Se outubro der 950 sem linha "sem categoria", os 100 somem do plano: a soma "dinheiro nas contas = A atribuir + disponível" deixa de fechar por 100 (1.050 nas contas, 950 no plano). Anote se a tela avisa alguma coisa.
+
+**9C — gasta em outubro o crédito do cartão.** No plano de **outubro**, atribua **10** a Mercado. No **Cartão**: Add Transaction, Date **13/10/2026**, Payee qualquer, **Category: Mercado**, **Outflow 10**. O Cartão vai de +10 para 0.
+
+| Onde | Esperado | Se der… |
+|---|---|---|
+| Corrente / Cartão | 1.040 / 0 | |
+| Outubro: Mercado (Activity / Available) | −10 / 0 | |
+| Outubro: Pagamento do Cartão (Activity / Available) | **+10 / 10** | 0 / 0 → o gasto usa o crédito do cartão sem passar pela categoria de pagamento |
+| "Ready to Assign" de outubro / novembro | **940** / 940 | 930 → gastar o crédito no mês seguinte também desfaz o +10 de setembro |
+| Novembro: Pagamento do Cartão | 10 | |
+
+A atribuição sozinha leva o "Ready to Assign" de outubro de 950 a 940; pelo motor, o gasto não muda mais nada.
+
+**9D — transferência da Corrente para o Investimento, sem categoria (roteiro 4E).** Na **Conta Corrente**: Add Transaction, Date **13/10/2026**, Payee **"Transfer : Investimento"**, **Category em branco**, **Outflow 300**. Confira que o Investimento foi de −100 para **200** e que a linha da Corrente mostra "This needs a category".
+
+| Onde | Esperado | Se der… |
+|---|---|---|
+| Corrente / Investimento | 740 / 200 | |
+| Outubro: "Uncategorized Transactions" (Activity / Available) | −300 / −300 (vermelho) | |
+| "Ready to Assign" de outubro | 940 (não muda) | 640 → a transferência sem categoria desconta no mesmo mês |
+| "Ready to Assign" de novembro | **640** | 940 → o "sem categoria" de transferência não é estouro em dinheiro |
+
+**9E — uma categoria em dois cartões.**
+1. Crie a conta **Cartão 2**: Add Account, sem vincular ao banco, tipo **Credit Card**, saldo **0**. Ela cria a categoria "Cartão 2" em "Credit Card Payments".
+2. Crie a categoria **Farmácia** (qualquer grupo) e, no plano de **outubro**, atribua **60** a ela. Confira: "Ready to Assign" de outubro **880**.
+3. No **Cartão**: Add Transaction, Date **13/10/2026**, Payee qualquer, **Category: Farmácia**, **Outflow 30**. Confira: Pagamento do Cartão em outubro **40** (10 do 9C + 30); Farmácia 30.
+4. No **Cartão 2**: Add Transaction, Date **13/10/2026**, Payee qualquer, **Category: Farmácia**, **Outflow 70**.
+
+Farmácia gastou 100 no crédito e tinha 60: estoura 40 no crédito. Os 60 cobertos vão para as categorias de pagamento.
+
+| Onde | Esperado | Se der… |
+|---|---|---|
+| Cartão / Cartão 2 | −30 / −70 | |
+| Outubro: Farmácia (Activity / Available) | −100 / −40 (amarelo) | |
+| Outubro: Pagamento do Cartão (Available) | **28** (10 + 18) | 40 → o primeiro gasto é coberto primeiro (**por ordem**) |
+| Outubro: Pagamento do Cartão 2 (Available) | **42** | 30 → **por ordem**; 60 → o último gasto (ou o maior) é coberto primeiro |
+| "Ready to Assign" de outubro / novembro | 880 / **580** | novembro 540 → o estouro no crédito desconta (contradiz o roteiro 1) |
+| Novembro: Pagamento do Cartão / Cartão 2 | 28 / 42 | |
+
+Proporção: 60 × 30/100 = 18 no Cartão e 60 × 70/100 = 42 no Cartão 2. Se a tela der outra divisão, anote também o Activity das duas categorias de pagamento.
+
 ## 10. Implicações para o Tostão
 
 - **Modelo**: manter o do YNAB (duas transações com id cruzado; parte de divisão ↔ transação inteira; agendada com uma ponta só). Ele já passa pelo protocolo sem mudança e o `src/server.rs` guarda tudo sem conhecer transferências.
@@ -556,7 +673,7 @@ Fechadas com o usuário em 2026-10-13. Nenhuma ficou adiada.
 - Quem chama `setTransferCounterpartClearedStatus` e `getOtherSideReconciledTransfers` (talvez outro chunk do bundle).
 - O caso "B existe mas não aponta de volta para A": quando acontece.
 - A soma do servidor para receita e categorias com transferências (só inferida pelos painéis do cliente).
-- ~~Se uma entrada sem categoria vinda de acompanhamento entra no "A atribuir"~~: não entra, conferido no roteiro 4B. Ela fica na linha "sem categoria" com saldo positivo. Falta saber o que acontece com esse saldo positivo na virada do mês.
+- ~~Se uma entrada sem categoria vinda de acompanhamento entra no "A atribuir"~~: não entra, conferido no roteiro 4B. Ela fica na linha "sem categoria" com saldo positivo. Falta saber o que acontece com esse saldo positivo na virada do mês (roteiro 9B).
 - Por que pagar o cartão além da dívida (saldo do cartão positivo) aumentou o "A atribuir" em 10 (roteiro 5C), e por que ele não voltou quando o crédito saiu do cartão (5D).
   - **Conferido no roteiro 8** (8B a 8E): o pagamento da dívida do mês anterior não soma; o que passa da dívida soma; gastar o crédito no mesmo mês desfaz; estorno depois do excesso soma; gasto sem dinheiro desfaz (8F).
 - Estorno no cartão: só sai da categoria de pagamento na parte que reduz a dívida ou vai para o "A atribuir" (roteiro 8, três tentativas; `estorno_limitado`).

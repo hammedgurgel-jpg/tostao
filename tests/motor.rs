@@ -783,3 +783,74 @@ fn roteiro_8_pagamento_alem_da_divida_do_mes_anterior() {
     assert_eq!((c.atividade(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao")), (-60_000, -10_000));
     assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (950_000, 940_000));
 }
+
+#[test]
+fn roteiro_9_previsao_do_motor() {
+    // Previsão do motor para o roteiro 9 da análise 03; ainda não conferido
+    // na tela. Saldo inicial em 01/09.
+    const SET: u32 = 9;
+    let mut r = Roteiro::novo();
+    r.transacao("t1").data = dia(SET, 1);
+    r.cartao("cartao");
+    r.conta("investimento", TipoConta::Dinheiro, false);
+    let c = r.calcula();
+    assert_eq!((c.a_atribuir(SET), c.a_atribuir(OUT), c.a_atribuir(NOV)), (1_000_000, 1_000_000, 1_000_000));
+
+    // 9A: 50 no Cartão em Mercado (15/09, com 50 atribuídos) e pagamento de
+    // 60 em 20/09: +10 no A atribuir de setembro; outubro herda o vermelho.
+    r.orc.atribuicoes.push(Atribuicao { categoria: "mercado".into(), mes: dia(SET, 1), valor: 50_000 });
+    let gasto = r.lanca("cartao", -50_000, Some("mercado"));
+    r.transacao(&gasto).data = dia(SET, 15);
+    let (a, b) = r.transfere("corrente", "cartao", 60_000, None);
+    r.transacao(&a).data = dia(SET, 20);
+    r.transacao(&b).data = dia(SET, 20);
+    let c = r.calcula();
+    assert_eq!((c.conta("corrente"), c.conta("cartao")), (940_000, 10_000));
+    assert_eq!((c.atividade(SET, "pagamento-cartao"), c.disponivel(SET, "pagamento-cartao")), (-10_000, -10_000));
+    assert_eq!(c.a_atribuir(SET), 960_000);
+    assert_eq!(c.disponivel(OUT, "pagamento-cartao"), 0);
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (950_000, 950_000));
+
+    // 9B: 100 do Investimento para a Corrente em 20/09, sem categoria: não
+    // entra no A atribuir, e o motor não carrega o positivo para outubro.
+    let (a, b) = r.transfere("investimento", "corrente", 100_000, None);
+    r.transacao(&a).data = dia(SET, 20);
+    r.transacao(&b).data = dia(SET, 20);
+    let c = r.calcula();
+    assert_eq!((c.conta("corrente"), c.conta("investimento")), (1_040_000, -100_000));
+    assert_eq!(c.mes(dia(SET, 1)).unwrap().sem_categoria.balance, Some(100_000));
+    assert_eq!(c.mes(dia(OUT, 1)).unwrap().sem_categoria.balance, Some(0));
+    assert_eq!((c.a_atribuir(SET), c.a_atribuir(OUT), c.a_atribuir(NOV)), (960_000, 950_000, 950_000));
+
+    // 9C: atribui 10 a Mercado e gasta em outubro o crédito do cartão: não
+    // desfaz o +10 de setembro; passa para a categoria de pagamento.
+    r.atribui("mercado", 10_000);
+    r.lanca("cartao", -10_000, Some("mercado"));
+    let c = r.calcula();
+    assert_eq!(c.conta("cartao"), 0);
+    assert_eq!((c.atividade(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao")), (10_000, 10_000));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (940_000, 940_000));
+    assert_eq!(c.disponivel(NOV, "pagamento-cartao"), 10_000);
+
+    // 9D (roteiro 4E): 300 da Corrente para o Investimento, sem categoria.
+    r.transfere("corrente", "investimento", 300_000, None);
+    let c = r.calcula();
+    assert_eq!((c.conta("corrente"), c.conta("investimento")), (740_000, 200_000));
+    assert_eq!(c.mes(dia(OUT, 1)).unwrap().sem_categoria.balance, Some(-300_000));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (940_000, 640_000));
+
+    // 9E: Farmácia com 60 gasta 30 no Cartão e 70 no Cartão 2.
+    r.cartao("cartao2");
+    r.atribui("farmacia", 60_000);
+    assert_eq!(r.calcula().a_atribuir(OUT), 880_000);
+    r.lanca("cartao", -30_000, Some("farmacia"));
+    assert_eq!(r.calcula().disponivel(OUT, "pagamento-cartao"), 40_000);
+    r.lanca("cartao2", -70_000, Some("farmacia"));
+    let c = r.calcula();
+    assert_eq!((c.conta("cartao"), c.conta("cartao2")), (-30_000, -70_000));
+    assert_eq!((c.atividade(OUT, "farmacia"), c.disponivel(OUT, "farmacia")), (-100_000, -40_000));
+    assert_eq!(c.cat(OUT, "farmacia").credit_overspent(), -40_000, "amarelo");
+    assert_eq!((c.disponivel(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao2")), (28_000, 42_000));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (880_000, 580_000));
+    assert_eq!((c.disponivel(NOV, "pagamento-cartao"), c.disponivel(NOV, "pagamento-cartao2")), (28_000, 42_000));
+}
