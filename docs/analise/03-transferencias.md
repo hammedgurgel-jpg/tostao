@@ -375,6 +375,12 @@ Orçamento do roteiro 3 no início (Corrente 1.000, Poupança 0), 100 atribuído
 | 6E | Na Corrente, apaga a transação dividida | 1.000 | 0 | 100 | 900 | A ponta da Poupança some. |
 | 6F | Na Corrente, tenta criar uma transação com beneficiário "Transfer : Poupança" e dividi-la | — | — | — | — | Erro: não pode ser transferência e dividida. |
 
+**Primeira tentativa na tela (2026-10-13), a refazer.** A Corrente mostrou duas linhas com data, caixa de seleção e memo "parte": Mercado 70 e "Transfer: Poupança" 30. Não apareceu uma linha principal de divisão ("Split"). Os saldos bateram com o 6A: Corrente 900, Poupança 30 (memo "parte" copiado), Mercado 30, "A atribuir" 900. Mas, na Poupança:
+- mudar o valor para 40 **funcionou** (Poupança 40, Corrente 890);
+- apagar a ponta **funcionou** (Poupança 0, Corrente 930, Mercado continuou com 70 gastos).
+
+Isso contradiz os bloqueios lidos no código (§5). A explicação mais provável é que foram lançadas **duas transações separadas**, e não uma divisão. Com a transferência numa transação comum, editar e apagar pela outra ponta é o esperado (roteiro 3). Corrente 890 depois do 6B também aponta para isso: numa divisão de 100, o valor total não mudaria só pela ponta da Poupança. Refazer o 6A com o botão de divisão ("Split") na própria transação.
+
 ### Roteiro 7 — agendada
 
 | Passo | Ação | Corrente | Poupança | O que olhar |
