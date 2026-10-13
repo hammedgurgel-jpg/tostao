@@ -422,15 +422,17 @@ Todas as datas de outubro são **13/10 (hoje)**. Data futura vira agendada (rote
 
 #### Ponto de partida
 
+**Como saber se o pagamento virou transferência:** o saldo do **Cartão** muda junto. Depois do 8B, o Cartão vai de −50 para 0 **com o gasto de setembro ainda lá**. Se o Cartão não mudar, ou se a linha "Uncategorized Transactions" de outubro aparecer, o pagamento não é transferência: apague e lance de novo.
+
 O orçamento TESTE como está:
 - Conta Corrente com saldo inicial de 1.000 (13/10, "Inflow: Ready to Assign");
 - Cartão com um gasto de 50 em Mercado em 15/09;
 - setembro com 50 atribuídos a Mercado.
 
-**Passo 0 — limpar outubro.** Apague o que sobrou da primeira tentativa:
-1. Na **Conta Corrente**: as duas saídas de 13/10 sem beneficiário (50 e 10, "This needs a category").
-2. No **Cartão**: a saída de 10 em 13/10 sem categoria.
-3. No plano de **outubro**: atribuído de Mercado = 0.
+**Passo 0 — voltar ao ponto de partida.**
+1. Na **Conta Corrente**: apague as saídas de 13/10 **sem beneficiário** (50 e 10, "This needs a category"). Na Corrente deve sobrar só o "Starting Balance" de 1.000.
+2. No **Cartão**: apague tudo de outubro. Se o gasto de **15/09, 50, Mercado** não estiver lá, lance de novo (Add Transaction no Cartão, data 15/09/2026, Category Mercado, Outflow 50). No Cartão deve sobrar só esse gasto.
+3. No plano de **outubro**: atribuído de Mercado = 0. Em setembro, Mercado continua com 50 atribuídos.
 
 Confira:
 
@@ -495,6 +497,18 @@ A atribuição sozinha leva o "Ready to Assign" de 960 a 950; o gasto, pela regr
 
 Novembro é sempre o "Ready to Assign" de outubro mais o disponível negativo (vermelho) do Pagamento em outubro. Ex.: 8C, 960 − 10 = 950. Se outubro bater e novembro não, o erro está na virada, não na regra. Se outubro não bater com nenhuma coluna, anote o valor: ele ajuda a achar a regra certa.
 
+#### Segunda tentativa (2026-10-13)
+
+Os pagamentos **de novo não viraram transferência**: o Cartão ficou em 0 e a linha "Uncategorized Transactions" de outubro ficou em −50 e −60. O gasto de setembro tinha sido apagado (Mercado começou outubro com 50 e o Cartão com 0). O +10 continua **não testado**. Bate com o motor (teste `roteiro_8_segunda_tentativa_sem_transferencia`):
+- 8D: atribuir 10 e gastar 10 no cartão em Mercado: Mercado −10 / 50, Pagamento +10 / 10, cartão −10, "A atribuir" 940;
+- 8F como lançado (sem atribuição em outubro, 10 no cartão em Mercado, coberto pela sobra de setembro): Mercado −10 / 40, Pagamento +10 / 10, "A atribuir" 950.
+
+**Diverge do motor — 8E:** estorno de 20 em Mercado num cartão **sem dívida** (saldo 0, Pagamento 0 / 0). Na tela: Mercado +20 / 80, cartão **+20**, "A atribuir" 940, e o **Pagamento ficou 0 / 0**. O motor tira os 20 do Pagamento (−20 / −20), como na primeira tentativa, em que o cartão tinha dívida de 50 e o Pagamento foi de 50 para 30. Teste `roteiro_8e_estorno_com_cartao_sem_divida`, marcado `#[ignore]` até achar a regra. Duas explicações cabem nos dois casos:
+- o estorno só tira da categoria de pagamento o que ela tem disponível (não a deixa negativa);
+- o estorno só tira da categoria de pagamento até o tamanho da dívida do cartão.
+
+Na tela, o dinheiro fechou: Corrente 940 + Cartão 20 = 960 = "A atribuir" 940 + Mercado 80 + Pagamento 0 + sem categoria −60.
+
 #### Primeira tentativa
 
 **Primeira tentativa na tela (2026-10-13), a refazer.** Os "pagamentos" do 8B e do 8C ficaram como saídas da Corrente **sem beneficiário e sem categoria** ("This needs a category"), e não como transferência; a conta Cartão não recebeu nada. O gasto do 8F também ficou sem categoria. Então o +10 **não foi testado**. O que a tela mostrou bate com o motor (teste `roteiro_8_primeira_tentativa_sem_transferencia`):
@@ -533,6 +547,8 @@ Fechadas com o usuário em 2026-10-13. Nenhuma ficou adiada.
 - A soma do servidor para receita e categorias com transferências (só inferida pelos painéis do cliente).
 - ~~Se uma entrada sem categoria vinda de acompanhamento entra no "A atribuir"~~: não entra, conferido no roteiro 4B. Ela fica na linha "sem categoria" com saldo positivo. Falta saber o que acontece com esse saldo positivo na virada do mês.
 - Por que pagar o cartão além da dívida (saldo do cartão positivo) aumentou o "A atribuir" em 10 (roteiro 5C), e por que ele não voltou quando o crédito saiu do cartão (5D).
+  - Roteiro 8 (§9) para conferir; duas tentativas lançaram o pagamento sem transferência.
+- Estorno no cartão: com dívida, sai da categoria de pagamento (roteiro 8, primeira tentativa); sem dívida, não sai (segunda tentativa, 8E). O motor ainda tira sempre.
   - **Regra inferida** usada em `src/motor.rs` (`pagamento_alem_da_divida`): a parte dos pagamentos do mês que deixa o cartão com saldo positivo, além do saldo positivo que ele já tinha no fim do mês anterior, vai para o "A atribuir" do mês (`additional_to_be_budgeted`). Ela continua saindo da categoria de pagamento. Os gastos do cartão contam; as transferências que saem dele para conta orçamentária não. Fecha com 5A–5D e novembro, mas só esse caso foi visto. Falta conferir na tela: pagar a mais com dívida de mês anterior, e gastar no cartão com saldo positivo.
 - Os nomes internos `transfer_on_budget`, `transfer`, `transfer_off_budget` (66689): onde são usados.
 - Regras de empréstimo (`setDebtTransactionTypeIfNeeded`, categoria da dívida).

@@ -665,3 +665,56 @@ fn roteiro_8_primeira_tentativa_sem_transferencia() {
     assert_eq!((c.disponivel(OUT, "mercado"), c.disponivel(OUT, "pagamento-cartao")), (0, 50_000));
     assert_eq!((c.conta("cartao"), c.a_atribuir(OUT)), (-60_000, 950_000));
 }
+
+/// Segunda tentativa do roteiro 8, como foi lançada: o gasto de setembro
+/// foi apagado, e os "pagamentos" continuaram como saídas sem categoria.
+fn roteiro_8_segunda_tentativa() -> Roteiro {
+    let mut r = Roteiro::novo();
+    r.cartao("cartao");
+    r.orc.atribuicoes.push(Atribuicao { categoria: "mercado".into(), mes: dia(9, 1), valor: 50_000 });
+    r.lanca("corrente", -50_000, None);
+    r.lanca("corrente", -10_000, None);
+    r
+}
+
+#[test]
+fn roteiro_8_segunda_tentativa_sem_transferencia() {
+    // Conferido na tela em 2026-10-13.
+    let mut r = roteiro_8_segunda_tentativa();
+    let c = r.calcula();
+    assert_eq!((c.conta("corrente"), c.conta("cartao")), (940_000, 0));
+    assert_eq!(c.disponivel(OUT, "mercado"), 50_000, "sobra de setembro");
+    assert_eq!(c.mes(dia(OUT, 1)).unwrap().sem_categoria.balance, Some(-60_000));
+    assert_eq!((c.disponivel(OUT, "pagamento-cartao"), c.a_atribuir(OUT)), (0, 950_000));
+
+    // 8D: atribui 10 e gasta 10 no cartão em Mercado.
+    r.atribui("mercado", 10_000);
+    r.lanca("cartao", -10_000, Some("mercado"));
+    let c = r.calcula();
+    assert_eq!((c.atividade(OUT, "mercado"), c.disponivel(OUT, "mercado")), (-10_000, 50_000));
+    assert_eq!((c.atividade(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao")), (10_000, 10_000));
+    assert_eq!((c.conta("cartao"), c.a_atribuir(OUT)), (-10_000, 940_000));
+
+    // 8F como lançado: sem atribuição em outubro, 10 no cartão em Mercado,
+    // cobertos pela sobra de setembro.
+    r.orc.atribuicoes.retain(|a| a.mes != dia(OUT, 1));
+    let c = r.calcula();
+    assert_eq!((c.atividade(OUT, "mercado"), c.disponivel(OUT, "mercado")), (-10_000, 40_000));
+    assert_eq!((c.atividade(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao")), (10_000, 10_000));
+    assert_eq!((c.conta("cartao"), c.a_atribuir(OUT)), (-10_000, 950_000));
+}
+
+#[test]
+#[ignore = "diverge da tela: estorno no cartão sem dívida (roteiro 8E, segunda tentativa)"]
+fn roteiro_8e_estorno_com_cartao_sem_divida() {
+    // Na tela: estorno de 20 em Mercado num cartão com saldo 0 e categoria
+    // de pagamento com 0. Mercado +20 / 80, cartão +20, A atribuir 940, e a
+    // categoria de pagamento ficou em 0 / 0. O motor tira os 20 dela (−20).
+    let mut r = roteiro_8_segunda_tentativa();
+    r.atribui("mercado", 10_000);
+    r.lanca("cartao", 20_000, Some("mercado"));
+    let c = r.calcula();
+    assert_eq!((c.atividade(OUT, "mercado"), c.disponivel(OUT, "mercado")), (20_000, 80_000));
+    assert_eq!((c.conta("cartao"), c.a_atribuir(OUT)), (20_000, 940_000));
+    assert_eq!((c.atividade(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao")), (0, 0));
+}
