@@ -90,6 +90,34 @@ fn uncategorized_cash_outflows_count_as_cash_overspending() {
 }
 
 #[test]
+fn month_overspending_matches_ynab_screen_roteiro_1() {
+    // Roteiro 1 conferido no YNAB em 2026-10-13 (orçamento TESTE, out → nov/2026).
+    // Mercado: atribuído 50, gasto 80 na corrente.
+    let mut groceries = SubCategoryMonthCalc { budgeted: 50_000, cash_outflows: Some(-80_000), ..Default::default() };
+    calculate_balance(&mut groceries, None, id);
+    calculate_budgeted_cash_credit_outflows(&mut groceries);
+    // Lazer: nada atribuído, gasto 60 no cartão.
+    let mut fun = SubCategoryMonthCalc { credit_outflows: Some(-60_000), ..Default::default() };
+    calculate_balance(&mut fun, None, id);
+    calculate_budgeted_cash_credit_outflows(&mut fun);
+    // Sem categoria: 40 na corrente e 25 no cartão (a tela mostra uma linha só, −65).
+    let uncategorized = uncategorized_row(-40_000, -25_000);
+    assert_eq!(uncategorized.balance, Some(-65_000));
+
+    let over_spent = month_over_spent([&groceries, &fun], &uncategorized);
+    assert_eq!(over_spent, -70_000, "só os 30 do Mercado e os 40 sem categoria em dinheiro");
+
+    let mut oct = MonthCalc { immediate_income: 1_000_000, budgeted: 50_000, ..Default::default() };
+    calculate_available_to_budget(&mut oct, None, id);
+    oct.over_spent = over_spent;
+    assert_eq!(oct.available_to_budget, 950_000, "A atribuir de outubro na tela");
+
+    let mut nov = MonthCalc::default();
+    calculate_available_to_budget(&mut nov, Some(&oct), id);
+    assert_eq!(nov.available_to_budget, 880_000, "A atribuir de novembro na tela");
+}
+
+#[test]
 fn overspending_is_split_between_cash_and_credit() {
     // mercado: atribuído 10, gasto 15 em dinheiro
     let mut groceries = SubCategoryMonthCalc { budgeted: 10_000, cash_outflows: Some(-15_000), ..Default::default() };

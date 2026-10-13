@@ -152,9 +152,8 @@ pub fn uncategorized_row(cash_outflows: i64, credit_outflows: i64) -> SubCategor
 /// linha "sem categoria". O estouro no crédito fica de fora porque vira dívida
 /// no cartão.
 ///
-/// Regra nossa, não lida no cálculo do bundle: o `overSpent` chega pronto do
-/// servidor (`over_spent`). A inclusão da linha "sem categoria" vem de a tela
-/// tratá-la como estouro em dinheiro (`hasAnyCashOverSpending`). Ver
+/// A soma não está no bundle (o `overSpent` chega pronto do servidor), mas a
+/// regra foi conferida na tela do YNAB, inclusive a linha "sem categoria". Ver
 /// `docs/analise/01-estouro-cartao-metas.md`, seção 2.
 pub fn month_over_spent<'a>(
     categories: impl IntoIterator<Item = &'a SubCategoryMonthCalc>,

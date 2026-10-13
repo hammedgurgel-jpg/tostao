@@ -7,6 +7,7 @@ As regras abaixo estão descritas com nossas palavras; o código do YNAB não fo
 Legenda de confiança:
 - **visto**: a fórmula está no bundle e foi lida;
 - **reproduzido**: a regra foi escrita em Rust e testada com casos concretos (`tests/calc.rs`, `tests/goals.rs`);
+- **conferido na tela**: o resultado foi observado num orçamento de teste do YNAB e bate com a regra;
 - **inferido**: deduzido de nomes, textos de tela e uso, sem a fórmula à vista;
 - **não achado**: não está no bundle web.
 
@@ -36,22 +37,32 @@ Não dá para copiar o "deixa o servidor calcular" do YNAB, porque o servidor so
   - estouro em dinheiro "será descontado do que você tem para atribuir no mês seguinte";
   - estouro no crédito "vira dívida no cartão".
 
-### Do mês (`overSpent` do `monthlyBudgetCalculation`) — soma não achada no cliente; regra inferida
+### Do mês (`overSpent` do `monthlyBudgetCalculation`) — soma não achada no cliente; regra conferida na tela
 
 - **Visto**: o cliente nunca calcula `overSpent`. Ele só lê e copia o campo do servidor `over_spent` (offsets 1795626, 1884453, 1886616, 1887272). O `BudgetMonth` da biblioteca Kotlin (offset 1374956, construtor em ~1065362) também não tem o campo. Por isso a soma **não está no bundle**.
 - **Visto**: o disponível do mês seguinte usa o `overSpent` do mês anterior: `availableToBudget = o + u + (receita + adicional − atribuído)`, com `u = overSpent` (offset 1795822); e `overSpentInPreviousMonth` (offset 2726708).
 - **Visto**: a linha "sem categoria" (`budgetMonthDisplayItemForUncategorizedTransactions`, criada em 2993749 e 3007392 com a mesma classe de item das categorias) entra em `hasAnyCashOverSpending` (offset 2993229). Essa checagem só olha `isOverSpentOnCash`, ou seja, o estouro **em dinheiro**. A linha só aparece quando `uncategorizedBalance` ou `uncategorizedOutflows` é diferente de zero (offset 2990948).
-- **Regra (inferida)**:
+- **Regra (conferida na tela em 2026-10-13, ver abaixo)**:
 
   > `overSpent(mês)` = soma do **estouro em dinheiro** das categorias do mês, mais o estouro em dinheiro da linha "sem categoria" (≤ 0). O estouro no crédito não entra: vira dívida no cartão. A linha "sem categoria" tem atribuído 0, então o estouro dela é `min(saídas em dinheiro sem categoria, 0)`.
 
-- **Decisão sobre as saídas sem categoria**: entram, só as **em dinheiro**. Isso é inferido: a tela trata a linha "sem categoria" como um item de estouro em dinheiro, e a soma em si é feita pelo servidor, sem código no bundle.
-- Em `src/calc.rs`: `month_over_spent` recebe a linha "sem categoria" (`uncategorized_row`). Testes em `tests/calc.rs`: `uncategorized_cash_outflows_count_as_cash_overspending` (reproduzido).
+- **Saídas sem categoria**: entram, só as **em dinheiro**. A tela mostra uma linha só ("Uncategorized Transactions") somando dinheiro e cartão, mas só a parte em dinheiro passa para o mês seguinte.
+- Em `src/calc.rs`: `month_over_spent` recebe a linha "sem categoria" (`uncategorized_row`). Testes em `tests/calc.rs`: `uncategorized_cash_outflows_count_as_cash_overspending` e `month_overspending_matches_ynab_screen_roteiro_1`.
 
-**Teste na tela (para confirmar a regra)**: num orçamento de teste, sem categoria escolhida, gaste 40 em dinheiro numa conta corrente, sem atribuir nada.
-1. No mês seguinte, o "A atribuir" deve cair 40 em relação ao que ficaria sem esse gasto.
-2. Repita com o mesmo gasto no cartão de crédito sem categoria: o "A atribuir" não deve mudar.
-Se o passo 1 não cair, a regra está errada.
+**Conferência na tela (2026-10-13)**, orçamento de teste com corrente de 1.000 (receita), cartão com saldo 0 e nada atribuído em novembro:
+
+| Passo | Ação em outubro | Outubro na tela | "A atribuir" de novembro |
+|---|---|---|---|
+| — | Só o saldo inicial | A atribuir 1.000 | — |
+| 1A | Atribui 50 a Mercado e gasta 80 na corrente | Mercado −30; A atribuir 950 | 920 |
+| 1B | Gasta 40 na corrente, sem categoria | Sem categoria −40; A atribuir 950 | 880 |
+| 1C | Gasta 60 no cartão, em Lazer (nada atribuído) | Lazer −60 (aviso de crédito); cartão −60 | 880 |
+| 1D | Gasta 25 no cartão, sem categoria | Sem categoria −65; cartão −85 | 880 |
+
+Também se viu que:
+- o "A atribuir" de outubro não muda com o estouro;
+- em novembro, Mercado e Lazer começam em 0, porque o saldo negativo não passa adiante;
+- a categoria de pagamento do cartão fica em 0, marcada em amarelo (falta), com a dívida de 85 só no saldo da conta.
 
 ## 3. Cartão de crédito
 
@@ -236,7 +247,7 @@ Totais usados na tela (80211):
 Já implementado no Tostão, com testes em `tests/goals.rs` e `tests/calc.rs`:
 - **Metas** (seção 4), em `src/goals.rs`. Os totais de falta também, sem a parte do painel do cartão.
 - **Estouro** por categoria e do mês (seção 2), em `src/calc.rs`.
-  - O estouro do mês soma o estouro em dinheiro das categorias e da linha "sem categoria" (regra inferida, abaixo).
+  - O estouro do mês soma o estouro em dinheiro das categorias e da linha "sem categoria" (conferido na tela).
 - **Saldo da categoria de pagamento do cartão** (seção 3), em `src/calc.rs`.
   - Quando uma categoria usa vários cartões, a parte coberta é dividida entre eles na proporção do gasto. Essa regra é nossa.
 - **Arredondamento** (seção 4): `js_round` (Math.round) e `round_to_currency`, em `src/calc.rs`.
@@ -245,13 +256,13 @@ Já implementado no Tostão, com testes em `tests/goals.rs` e `tests/calc.rs`:
 
 Estado dos três pontos em aberto (2026-10-13):
 
-1. **`overSpent` do mês** — **inferido**. Regra: estouro em dinheiro das categorias + estouro em dinheiro da linha "sem categoria". O estouro no crédito fica de fora. A soma não está no bundle (o servidor calcula); a inclusão da linha "sem categoria" vem da tela (`hasAnyCashOverSpending`, offset 2993229). Teste na tela: seção 2.
+1. **`overSpent` do mês** — **conferido na tela** (roteiro 1, seção 2). Regra: estouro em dinheiro das categorias + estouro em dinheiro da linha "sem categoria". O estouro no crédito fica de fora. A soma não está no bundle (o servidor calcula).
 2. **Saldo da categoria de pagamento do cartão** — **inferido** na soma; a parte genérica é **visto** (`calculateBalance`, offset 1810221). Regra: saldo positivo do mês anterior + atribuído + pagamentos (saídas em dinheiro) − `budgetedSpending`. Falta ver no bundle que as saídas no crédito da categoria de pagamento são −`budgetedSpending`. Teste na tela: seção 3.
 3. **Arredondamento (`roundMilliDollars`)** — **visto e reproduzido**. Modo: `Math.round` (metade para +∞) no saldo e no disponível; `Math.ceil` na meta TBD/NEED. Passo: 10 milésimos para o real. Seção 4.
 
 Resolvidos na análise 02: a geração das datas das agendadas (§2), como a movimentação altera o atribuído (§1) e a reconciliação de contas (§3).
 
-Para os itens 1 e 2, a única forma de passar de inferido a visto é observar a tela de um orçamento de teste, nos passos das seções 2 e 3. A biblioteca Kotlin (offsets ~1,30M–1,45M) foi lida em parte: tem `Calculations` com os campos do cartão (1312078–1312411), mas a lógica da soma do mês não aparece nela.
+Para o item 2, a única forma de passar de inferido a conferido é observar a tela de um orçamento de teste, nos passos da seção 3. A biblioteca Kotlin (offsets ~1,30M–1,45M) foi lida em parte: tem `Calculations` com os campos do cartão (1312078–1312411), mas a lógica da soma do mês não aparece nela.
 
 Outras funcionalidades ainda não olhadas:
 - regras de empréstimo/hipoteca além da reconciliação (`isLoanAccount`);
