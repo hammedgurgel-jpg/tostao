@@ -170,7 +170,7 @@ Resumo:
 - **Não verificado:**
   - ~~transferência do cartão para a corrente~~: **conferido (roteiro 5D)**, não volta para a categoria de pagamento e não muda o "A atribuir".
   - pagamento vindo de conta de acompanhamento: não é transferência entre orçamentárias, então pede categoria no cartão e não conta como pagamento no painel. Roteiro não incluído.
-  - pagamento maior do que o disponível: **conferido (roteiro 5B)**, a categoria de pagamento fica negativa em vermelho (estouro em dinheiro). Ainda falta ver o desconto no "A atribuir" do mês seguinte.
+  - pagamento maior do que o disponível: **conferido (roteiro 5B e novembro)**, a categoria de pagamento fica negativa em vermelho (estouro em dinheiro) e isso desconta do "A atribuir" do mês seguinte.
 
 ## 5. Subtransações (divisão com transferência)
 
@@ -360,6 +360,7 @@ Orçamento novo (ou desfaça os roteiros anteriores): Corrente 1.000; atribui 10
 - 5C: escolher a categoria de pagamento numa saída da corrente sem beneficiário virou "Payment: Cartão". **Conferido.** O cartão ficou com saldo positivo de 10 e o "A atribuir" de outubro **subiu para 1.010**. **Não explicado**: não está no bundle (é soma do servidor).
 - 5D: a saída de 10 do cartão para a corrente **não mexeu** na categoria de pagamento (−70) nem no "A atribuir" (1.010). **Conferido.**
 - Nos quatro passos vale a conta "dinheiro nas contas orçamentárias = A atribuir + disponível das categorias sem estouro no crédito": 940 = 1.000 − 60 (5B), 940 = 1.010 − 70 (5C e 5D). O estouro no crédito de Mercado (−60) fica de fora. Pode ser a pista para o +10, mas é só uma conta que fecha.
+- **Novembro** (estado do 5D): "A atribuir" **940** = 1.010 − 70. Pagamento e Mercado começam em 0. **Conferido**: o estouro em dinheiro da categoria de pagamento (−70) desconta do "A atribuir" do mês seguinte, como na análise 01. O estouro no crédito de Mercado (−60) não desconta. O +10 de outubro some na virada: em novembro, o "A atribuir" é igual ao dinheiro das contas (940). A regra do +10 continua não explicada, mas o efeito dela termina no mês seguinte.
 
 ### Roteiro 6 — divisão com transferência
 
