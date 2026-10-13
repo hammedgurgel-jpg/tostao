@@ -117,6 +117,62 @@ fn month_overspending_matches_ynab_screen_roteiro_1() {
     assert_eq!(nov.available_to_budget, 880_000, "A atribuir de novembro na tela");
 }
 
+fn card_spending(budgeted: i64, on_card: i64) -> (SubCategoryMonthCalc, CardSpending) {
+    let mut c = SubCategoryMonthCalc { budgeted, credit_outflows: Some(on_card), ..Default::default() };
+    calculate_balance(&mut c, None, id);
+    calculate_budgeted_cash_credit_outflows(&mut c);
+    let part = CardSpending {
+        category_credit_outflows: on_card,
+        category_budgeted_credit_outflows: c.budgeted_credit_outflows,
+        on_this_card: on_card,
+    };
+    (c, part)
+}
+
+fn payment_balance(parts: &[CardSpending], payments: i64, previous: Option<&SubCategoryMonthCalc>) -> SubCategoryMonthCalc {
+    let mut p = SubCategoryMonthCalc {
+        cash_outflows: Some(payments),
+        budgeted_spending: funded_spending_on_card(parts),
+        ..Default::default()
+    };
+    calculate_credit_card_payment_balance(&mut p, previous, id);
+    p
+}
+
+#[test]
+fn credit_card_payment_matches_ynab_screen_roteiro_2() {
+    // Roteiro 2 conferido no YNAB em 2026-10-13 (orçamento TESTE, out → nov/2026).
+    // 2A: Mercado com 100 atribuídos, 30 gastos no cartão: o pagamento recebe 30.
+    let (groceries, groceries_part) = card_spending(100_000, -30_000);
+    assert_eq!(groceries.balance, Some(70_000));
+    assert_eq!(payment_balance(&[groceries_part], 0, None).balance, Some(30_000));
+    // 2B: paga 30 da corrente: o pagamento volta a 0.
+    assert_eq!(payment_balance(&[groceries_part], -30_000, None).balance, Some(0));
+    // 2C: Lazer sem dinheiro, 30 no cartão: o pagamento não recebe nada.
+    let (fun, fun_part) = card_spending(0, -30_000);
+    assert_eq!(fun.credit_overspent(), -30_000);
+    assert_eq!(payment_balance(&[groceries_part, fun_part], -30_000, None).balance, Some(0));
+    // 2D: Farmácia com 20, 50 no cartão: o pagamento recebe só os 20 cobertos.
+    let (pharmacy, pharmacy_part) = card_spending(20_000, -50_000);
+    assert_eq!(pharmacy.credit_overspent(), -30_000);
+    let oct = payment_balance(&[groceries_part, fun_part, pharmacy_part], -30_000, None);
+    assert_eq!(oct.balance, Some(20_000));
+
+    // O estouro no crédito não desconta do A atribuir: 880 em outubro e em novembro.
+    let over_spent = month_over_spent([&groceries, &fun, &pharmacy], &uncategorized_row(0, 0));
+    assert_eq!(over_spent, 0);
+    let mut oct_month = MonthCalc { immediate_income: 1_000_000, budgeted: 120_000, ..Default::default() };
+    calculate_available_to_budget(&mut oct_month, None, id);
+    oct_month.over_spent = over_spent;
+    assert_eq!(oct_month.available_to_budget, 880_000);
+    let mut nov_month = MonthCalc::default();
+    calculate_available_to_budget(&mut nov_month, Some(&oct_month), id);
+    assert_eq!(nov_month.available_to_budget, 880_000);
+
+    // 2E: em novembro, sem novos gastos, o pagamento continua com 20.
+    assert_eq!(payment_balance(&[], 0, Some(&oct)).balance, Some(20_000));
+}
+
 #[test]
 fn overspending_is_split_between_cash_and_credit() {
     // mercado: atribuído 10, gasto 15 em dinheiro

@@ -196,9 +196,8 @@ pub fn funded_spending_on_card(parts: &[CardSpending]) -> i64 {
 ///
 /// O bundle calcula o saldo de toda categoria do mesmo jeito (visto: carrega
 /// só o saldo positivo, soma atribuído, saídas em dinheiro e no crédito). A
-/// parte do cartão depende de o servidor pôr o gasto coberto como saídas no
-/// crédito da categoria de pagamento, com sinal oposto a `budgeted_spending`.
-/// Isso é inferido, não visto. Ver `docs/analise/01-estouro-cartao-metas.md`, seção 3.
+/// parte do cartão (gasto coberto entra, pagamento sai) não está no bundle,
+/// mas foi conferida na tela do YNAB. Ver `docs/analise/01-estouro-cartao-metas.md`, seção 3.
 pub fn calculate_credit_card_payment_balance(
     current: &mut SubCategoryMonthCalc,
     previous: Option<&SubCategoryMonthCalc>,

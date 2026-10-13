@@ -98,7 +98,7 @@ Estado do pagamento (66883), na ordem em que é decidido:
 5. há estouro no crédito → `CreditOverspending`;
 6. senão → `Underfunded`.
 
-### Saldo da categoria de pagamento — visto em parte, inferido na soma
+### Saldo da categoria de pagamento — visto em parte, regra conferida na tela
 
 O que foi visto no bundle:
 - **Saldo genérico** (módulo 80211, `calculateBalance`, offset 1810221; a conta em 1810483): `saldo = max(saldo do mês anterior, 0) + atribuído + saídas em dinheiro + saídas no crédito`, arredondado com `roundMilliDollars`. Vale para todas as categorias, inclusive a de pagamento; o saldo negativo do mês anterior não passa.
@@ -109,17 +109,28 @@ O que não foi visto:
 - o servidor monta as saídas no crédito da categoria de pagamento (quanto dos gastos no cartão passou para ela) e o `budgetedSpending` a partir das transações. O bundle só recebe esses valores;
 - o sinal dos pagamentos dentro da categoria (saída, valor ≤ 0). O painel mostra o módulo do valor.
 
-**Regra adotada (inferida)**:
+**Regra (conferida na tela em 2026-10-13, ver abaixo)**:
 
 > saldo(pagamento do cartão X, mês) = saldo positivo do mês anterior + atribuído + saídas em dinheiro da categoria (pagamentos, ≤ 0) − `budgetedSpending` (gasto coberto, ≤ 0 → soma seu módulo).
 
-Ela é igual à fórmula genérica do bundle **se** as saídas no crédito da categoria de pagamento forem exatamente −`budgetedSpending`. Esse ponto não aparece no bundle. Em `src/calc.rs` (`calculate_credit_card_payment_balance`), testes em `tests/calc.rs` (`credit_card_payment_collects_funded_spending_and_pays_out`, reproduzido).
+Ela é igual à fórmula genérica do bundle se as saídas no crédito da categoria de pagamento forem −`budgetedSpending`. Isso não aparece no bundle, mas a tela confirma: a coluna "Activity" da categoria de pagamento mostra o gasto coberto (positivo) mais os pagamentos (negativos). Em `src/calc.rs` (`calculate_credit_card_payment_balance`), testes em `tests/calc.rs` (`credit_card_payment_collects_funded_spending_and_pays_out` e `credit_card_payment_matches_ynab_screen_roteiro_2`).
 
-**Teste na tela (para confirmar a regra)**: num orçamento de teste, com um cartão de crédito:
-1. Atribua 100 à categoria "Mercado" e gaste 30 no cartão nela. A categoria de pagamento do cartão deve passar a mostrar 30 disponíveis (o gasto coberto passa para ela).
-2. Pague a fatura de 30 a partir da conta corrente. A categoria de pagamento deve voltar a 0 e o "Mercado" continuar com 70.
-3. Gaste 30 no cartão numa categoria **sem** dinheiro: a categoria de pagamento não deve ganhar nada (isso é o estouro no crédito, que vira dívida).
-Se o passo 1 mostrar outro valor, a regra do saldo está errada.
+Só a parte **coberta** do gasto passa para o pagamento. Quando a categoria tem menos dinheiro que o gasto, o resto vira estouro no crédito (passo 2D).
+
+**Conferência na tela (2026-10-13)**, orçamento de teste com corrente de 1.000 (receita), cartão com saldo 0 e 100 atribuídos a Mercado (A atribuir 900):
+
+| Passo | Ação | Mercado | Pagamento (Activity / disponível) | Cartão | A atribuir |
+|---|---|---|---|---|---|
+| 2A | Gasta 30 no cartão, em Mercado | 70 | +30 / 30 | −30 | 900 |
+| 2B | Paga 30 da corrente para o cartão | 70 | 0 / 0 | 0 | 900 |
+| 2C | Gasta 30 no cartão, em Lazer (sem dinheiro) | 70 | 0 / 0 (amarelo) | −30 | 900 |
+| 2D | Atribui 20 a Farmácia e gasta 50 no cartão nela | 70 | +20 / 20 (amarelo) | −80 | 880 |
+| 2E | Novembro, sem novos gastos | 70 | 0 / 20 | −80 | 880 |
+
+Também se viu que:
+- em novembro, Lazer (−30) e Farmácia (−30) começam em 0, e o estouro no crédito não desconta do "A atribuir";
+- "Left Over from Last Month" de novembro é 90: os 70 do Mercado mais os 20 do pagamento;
+- a "Activity" de outubro no resumo (−90) inclui a da categoria de pagamento (+20).
 
 ## 4. Metas
 
@@ -257,12 +268,12 @@ Já implementado no Tostão, com testes em `tests/goals.rs` e `tests/calc.rs`:
 Estado dos três pontos em aberto (2026-10-13):
 
 1. **`overSpent` do mês** — **conferido na tela** (roteiro 1, seção 2). Regra: estouro em dinheiro das categorias + estouro em dinheiro da linha "sem categoria". O estouro no crédito fica de fora. A soma não está no bundle (o servidor calcula).
-2. **Saldo da categoria de pagamento do cartão** — **inferido** na soma; a parte genérica é **visto** (`calculateBalance`, offset 1810221). Regra: saldo positivo do mês anterior + atribuído + pagamentos (saídas em dinheiro) − `budgetedSpending`. Falta ver no bundle que as saídas no crédito da categoria de pagamento são −`budgetedSpending`. Teste na tela: seção 3.
+2. **Saldo da categoria de pagamento do cartão** — **conferido na tela** (roteiro 2, seção 3); a parte genérica é **visto** (`calculateBalance`, offset 1810221). Regra: saldo positivo do mês anterior + atribuído + pagamentos (saídas em dinheiro) − `budgetedSpending`. Só a parte coberta do gasto passa para o pagamento.
 3. **Arredondamento (`roundMilliDollars`)** — **visto e reproduzido**. Modo: `Math.round` (metade para +∞) no saldo e no disponível; `Math.ceil` na meta TBD/NEED. Passo: 10 milésimos para o real. Seção 4.
 
 Resolvidos na análise 02: a geração das datas das agendadas (§2), como a movimentação altera o atribuído (§1) e a reconciliação de contas (§3).
 
-Para o item 2, a única forma de passar de inferido a conferido é observar a tela de um orçamento de teste, nos passos da seção 3. A biblioteca Kotlin (offsets ~1,30M–1,45M) foi lida em parte: tem `Calculations` com os campos do cartão (1312078–1312411), mas a lógica da soma do mês não aparece nela.
+Os três pontos estão fechados. Ainda não testamos na tela uma categoria que gasta em **dois cartões** no mesmo mês. A divisão proporcional da parte coberta entre eles é regra nossa. A biblioteca Kotlin (offsets ~1,30M–1,45M) foi lida em parte: tem `Calculations` com os campos do cartão (1312078–1312411), mas a lógica da soma do mês não aparece nela.
 
 Outras funcionalidades ainda não olhadas:
 - regras de empréstimo/hipoteca além da reconciliação (`isLoanAccount`);
