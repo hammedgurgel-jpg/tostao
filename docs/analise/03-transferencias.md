@@ -13,7 +13,7 @@ Legenda de confiança (igual às análises 01 e 02):
 - **inferido**: deduzido de nomes e uso, sem a lógica à vista;
 - **não achado**: não está no bundle web.
 
-Nesta análise nada foi reproduzido nem conferido na tela ainda, exceto o que já vinha da análise 01 (pagamento do cartão). Os roteiros da §9 servem para isso.
+Nada foi reproduzido. O roteiro 3 (entre contas orçamentárias) foi conferido na tela em 2026-10-13. O pagamento do cartão já vinha conferido da análise 01. Os outros roteiros da §9 ainda faltam.
 
 Vocabulário: "transferência" é sempre entre **contas** (CONTEXT.md). Chamo de **ponta** cada uma das duas transações de uma transferência, e de **espelho** a ponta que o app cria sozinho.
 
@@ -260,17 +260,18 @@ O servidor do Tostão guarda a **última versão inteira** de cada entidade e ap
 | Tema | Regra | Confiança |
 |---|---|---|
 | Modelo | Duas transações, cada uma com o id da outra; parte de divisão ↔ transação inteira | visto |
-| Modelo | Agendada guarda uma ponta só; a outra é desenhada na tela | visto |
+| Modelo | Agendada guarda uma ponta só; a outra é desenhada só em "All Accounts" | visto + conferido na tela |
 | Modelo | Beneficiário "Transfer : conta" define a transferência | visto |
 | Modelo | Beneficiário de transferência criado com a conta | inferido (não achado no web) |
 | Criação | Espelho: −valor, mesma data e memo, não compensada, aceite igual | visto |
-| Edição | Valor, memo, data, flag e conta propagam; compensação e aceite não | visto |
+| Edição | Valor, memo, data, flag e conta propagam; compensação e aceite não | visto + conferido na tela (valor, memo, data, compensação) |
 | Edição | Trocar destino move a mesma espelho de conta | visto |
 | Edição | Aprovar uma ponta aprova a outra | visto |
-| Remoção | Remover uma ponta remove a outra; espelho de parte não pode ser removida | visto |
-| Categoria | Entre orçamentárias: nenhuma; com acompanhamento: só na orçamentária | visto |
+| Edição | Data futura converte a transferência em agendada e remove a espelho | visto + conferido na tela |
+| Remoção | Remover uma ponta remove a outra; espelho de parte não pode ser removida | visto + conferido na tela (primeira parte) |
+| Categoria | Entre orçamentárias: nenhuma ("Category not needed"); com acompanhamento: só na orçamentária | visto + conferido na tela (primeira parte) |
 | Categoria | Categoria lançada na conta de acompanhamento vai para a ponta orçamentária | visto |
-| A atribuir | Transferência entre orçamentárias não é receita | inferido |
+| A atribuir | Transferência entre orçamentárias não é receita | conferido na tela |
 | Cartão | Entrada no cartão vinda de orçamentária = pagamento, sai da categoria de pagamento | visto + conferido na tela (análise 01, 2B) |
 | Cartão | Escolher a categoria de pagamento vira transferência para o cartão | visto |
 | Divisão | Principal não pode ser transferência entre orçamentárias e dividida | visto |
@@ -304,12 +305,14 @@ Valores esperados marcados com "?" são inferidos; os outros seguem do código l
 
 Nenhuma categoria muda em nenhum passo.
 
-**Conferência na tela (2026-10-13), passos 3A a 3C e data futura:**
+**Conferência na tela (2026-10-13), roteiro 3 inteiro:**
 - 3A: Corrente 800, Poupança 200, "A atribuir" 1.000. **Conferido.**
 - 3B: a ponta da Poupança ficou com 250 e memo "reserva 2", categoria "Category not needed". A Corrente foi para 750 e o "A atribuir" continuou 1.000. **Conferido**: valor e memo propagam da espelho para a origem.
-- 3C: a ponta da Poupança ficou compensada (saldo compensado da Poupança 250). O estado da ponta da Corrente ainda **não foi visto**.
+- 3C: a ponta da Poupança ficou compensada (saldo compensado da Poupança 250). Na Corrente, a ponta continuou **não compensada** (compensado 1.000, não compensado −250). **Conferido**: o estado de compensação não propaga.
 - 3D, feito com data **futura** (de 13/10 para 18/10): a transação da Corrente virou **agendada** (250, "Transfer: Poupança", memo "reserva 2", "Category not needed"). A ponta da Poupança sumiu, e a Corrente voltou a 1.000 e a Poupança a 0. **Conferido**: é a conversão em agendada da §2 (`convertToScheduledTransaction`), que remove a espelho. O roteiro foi corrigido para usar data passada no 3D, e o caso futuro virou o 3F.
-- Na tela da conta Poupança **não apareceu** a espelho desenhada da agendada (§6). Falta ver se ela aparece em "All Accounts", porque o código que a desenha é da lista de todas as contas (2920700).
+- A espelho desenhada da agendada (§6) **não aparece** na tela da conta Poupança, mas **aparece em "All Accounts"**: Poupança, 18/10, entrada de 250, "Transfer: Conta Corrente", memo "reserva 2", "Category not needed". **Conferido.** Bate com o código, que a desenha só na lista de todas as contas (2920700).
+- 3D (refeito com transferência nova, data passada): mudar a data da ponta da Corrente para 10/10 levou a ponta da Poupança para 10/10. A ponta da Poupança continuou compensada. **Conferido.**
+- 3E: apagar a ponta da Poupança apagou a da Corrente. **Conferido** (relato do usuário, sem captura).
 
 ### Roteiro 4 — orçamentária e acompanhamento
 
