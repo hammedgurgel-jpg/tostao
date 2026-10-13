@@ -505,7 +505,7 @@ Novembro é sempre o "Ready to Assign" de outubro mais o disponível negativo (v
 - 8C (mais 10 da Corrente para o Cartão): Corrente 940, Cartão +10, Pagamento de outubro −60 / −10 (vermelho), "A atribuir" **960** em outubro e 950 em novembro; setembro não mudou. **Conferido.** O +10 do 5C vale também com dívida do mês anterior: só a parte do pagamento que passa da dívida vai para o "A atribuir". Teste `roteiro_8_pagamento_alem_da_divida_do_mes_anterior`.
 - 8D (atribui 10 a Mercado e gasta 10 no Cartão em Mercado): Corrente 940, Cartão 0, Mercado −10 / 0, Pagamento −50 / 0, "A atribuir" **940** em outubro e em novembro. **Conferido.** A alternativa **por ordem** (950) está descartada: gastar o crédito no mesmo mês desfaz o +10.
 - 8E (apaga o gasto do 8D; estorno de 20 no Cartão em Mercado): Corrente 940, Cartão +30, Mercado +20 / 30, Pagamento −80 / −30 (vermelho), "A atribuir" **970** em outubro e 940 em novembro (Mercado 30 e Pagamento 0 em novembro). **Conferido.** A alternativa **só pagamento** (960) está descartada.
-- Com o 8E, os três estornos vistos fecham numa regra (`estorno_limitado` em `src/motor.rs`): **o estorno coberto só sai da categoria de pagamento na parte que reduz a dívida do cartão ou que vai para o "A atribuir"**; a parte que só deixa o cartão positivo fica na categoria do estorno. Primeira tentativa: reduziu a dívida, saiu 20. Segunda: cartão em 0 e sem pagamento no mês, não saiu nada. Terceira: depois de pagar além da dívida, saiu 20 e foi para o "A atribuir". O teste da segunda tentativa deixou de ser `#[ignore]`.
+- Com o 8E, os três estornos vistos fecham numa regra (`gasto_coberto_limitado` em `src/motor.rs`, antes `estorno_limitado`): **o estorno coberto só sai da categoria de pagamento na parte que reduz a dívida do cartão ou que vai para o "A atribuir"**; a parte que só deixa o cartão positivo fica na categoria do estorno. Primeira tentativa: reduziu a dívida, saiu 20. Segunda: cartão em 0 e sem pagamento no mês, não saiu nada. Terceira: depois de pagar além da dívida, saiu 20 e foi para o "A atribuir". O teste da segunda tentativa deixou de ser `#[ignore]`.
 - 8F (apaga o estorno; Mercado com 0 em outubro; 10 no Cartão em Mercado, sem dinheiro): Corrente 940, Cartão 0, Mercado −10 (amarelo, crédito), Pagamento −60 / −10 (vermelho), "A atribuir" **950** em outubro e 940 em novembro. **Conferido.** Gastar o crédito sem dinheiro na categoria também desfaz o +10.
 - **Roteiro 8 concluído**: as previsões da regra bateram nos seis passos, e as três alternativas foram descartadas.
 
@@ -734,9 +734,9 @@ Confira:
 | Onde | Esperado | Se der… |
 |---|---|---|
 | Oct 2026: Mercado (Activity / Available) | −10 / 0 | |
-| Oct 2026: Cartão em Credit Card Payments (Activity / Available) | **+10 / 10** | 0 / 0 → o gasto usa o crédito sem passar pela categoria de pagamento |
+| Oct 2026: Cartão em Credit Card Payments (Activity / Available) | ~~+10 / 10~~ **0 / 0** (tela; ver conferência) | |
 | Ready to Assign: Sep / Oct / Nov | 950 / **940** / 940 | Oct 930 → o +10 de setembro é desfeito em outubro |
-| Nov 2026: Cartão em Credit Card Payments | 10 | |
+| Nov 2026: Cartão em Credit Card Payments | ~~10~~ **0** | |
 
 ##### Etapa 4 (9D) — transferência para o Investimento, sem categoria
 
@@ -773,7 +773,7 @@ Confira:
 | Payee | qualquer nome, ex.: "Farmácia X" |
 | Category | **Farmácia** |
 | Outflow | **30** |
-| Depois de salvar | **Cartão −30**; Oct 2026, Cartão em Credit Card Payments: Available **40** |
+| Depois de salvar | **Cartão −30**; Oct 2026, Cartão em Credit Card Payments: Available **30** |
 
 **Lançamento E2 — gasto no Cartão 2**
 
@@ -791,10 +791,10 @@ Confira (Farmácia gastou 100 e tinha 60):
 | Onde | Esperado | Se der… |
 |---|---|---|
 | Oct 2026: Farmácia (Activity / Available) | −100 / −40 (amarelo) | |
-| Oct 2026: Cartão em Credit Card Payments (Available) | **28** (10 + 18) | 40 → o primeiro gasto é coberto primeiro |
+| Oct 2026: Cartão em Credit Card Payments (Available) | **18** | 30 → o primeiro gasto é coberto primeiro |
 | Oct 2026: Cartão 2 em Credit Card Payments (Available) | **42** | 30 → o primeiro primeiro; 60 → o último (ou o maior) primeiro |
 | Ready to Assign: Sep / Oct / Nov | 890 / 880 / **680** | Nov 640 → o estouro no crédito desconta |
-| Nov 2026: Cartão / Cartão 2 em Credit Card Payments | 28 / 42 | |
+| Nov 2026: Cartão / Cartão 2 em Credit Card Payments | 18 / 42 | |
 
 Mande uma captura do plano (Sep, Oct e Nov) e da tela "All Accounts" no fim de cada etapa.
 
@@ -804,6 +804,7 @@ Mande uma captura do plano (Sep, Oct e Nov) e da tela "All Accounts" no fim de c
 - **Etapa 2, A1** (50 no Cartão em Mercado, 15/09): Cartão −50, Corrente 1.100. Setembro: Mercado 50 / −50 / 0 ("Fully Spent"), Pagamento do Cartão +50 / 50, Ready to Assign 950. Outubro: Pagamento do Cartão 50, Uncategorized 100, Ready to Assign 950. **Conferido.**
 - **Etapa 2, A2, lançado de outro jeito**: saída de **50** da Corrente com Payee "Mercado x" e categoria **Mensal: Mercado** (20/09), e não pagamento de 60 para o Cartão. Setembro: Mercado 50 / −100 / **−50 amarelo** (estouro no crédito), Pagamento do Cartão 0 / 0, Ready to Assign 950; outubro 950, Pagamento 0. **Conferido** (teste `roteiro_9_segunda_tentativa_etapa_2_como_lancada`): o dinheiro da categoria cobre primeiro o gasto em dinheiro; o gasto no cartão fica sem cobertura e sai do Pagamento. É a ordem de `calculate_budgeted_cash_credit_outflows` (dinheiro antes do crédito), agora vista na tela. O +10 **ainda não foi testado**. A ficha do A2 passou a usar a categoria de pagamento como atalho.
 - **Etapa 2 (9A), A2 refeito** pela categoria de pagamento: a Corrente mostrou "Payment: Cartão", saída 60, e o Cartão "Payment: Conta Corrente", entrada 60 (as duas com "Credit Card Payments: Cartão" na coluna de categoria). Corrente 1.040, Cartão **+10**. Setembro: Mercado 50 / −50 / 0, Pagamento do Cartão 0 / −10 / **−10 vermelho**, Ready to Assign **960**. Outubro: Pagamento do Cartão 0, Uncategorized 100, "Left Over from Last Month" 100, Ready to Assign **950**. **Conferido**: o +10 vale também com o gasto e o pagamento no mesmo mês, e na virada o vermelho do Pagamento desconta do mês seguinte sem passar para a categoria (outubro sem nada lançado). É o item 1 do roteiro.
+- **Etapa 3 (9C)**: 10 atribuídos a Mercado em outubro e gasto de 10 **no Cartão** em Mercado (13/10). Cartão 0, Corrente 1.040. Outubro: Mercado 10 / −10 / 0 ("Fully Spent"), **Pagamento do Cartão 0 / 0**, Uncategorized 100, Ready to Assign 940. Novembro: Pagamento 0, Ready to Assign 940. **Divergia do motor**, que previa Pagamento +10 / 10 (e a conta do dinheiro não fecharia: 1.040 nas contas contra 1.050 no plano). Na tela fecha: 1.040 = 940 + 100 sem categoria. **Regra**: o gasto coberto que só consome o saldo positivo trazido do mês anterior não passa para a categoria de pagamento, porque não vira dívida. O +10 de setembro **não** é desfeito (outubro 940 só pela atribuição). Motor ajustado (`gasto_coberto_limitado`); as previsões do 9E mudaram (Pagamento do Cartão 30 depois do E1, 18 no fim).
 
 #### Primeira tentativa (2026-10-13)
 
@@ -846,7 +847,8 @@ Fechadas com o usuário em 2026-10-13. Nenhuma ficou adiada.
 - ~~Se uma entrada sem categoria vinda de acompanhamento entra no "A atribuir"~~: não entra, conferido no roteiro 4B. Ela fica na linha "sem categoria" com saldo positivo, que passa para o mês seguinte (roteiro 9B).
 - Por que pagar o cartão além da dívida (saldo do cartão positivo) aumentou o "A atribuir" em 10 (roteiro 5C), e por que ele não voltou quando o crédito saiu do cartão (5D).
   - **Conferido no roteiro 8** (8B a 8E): o pagamento da dívida do mês anterior não soma; o que passa da dívida soma; gastar o crédito no mesmo mês desfaz; estorno depois do excesso soma; gasto sem dinheiro desfaz (8F).
-- Estorno no cartão: só sai da categoria de pagamento na parte que reduz a dívida ou vai para o "A atribuir" (roteiro 8, três tentativas; `estorno_limitado`).
+- Estorno no cartão: só sai da categoria de pagamento na parte que reduz a dívida ou vai para o "A atribuir" (roteiro 8, três tentativas; `gasto_coberto_limitado`).
+- Gasto no cartão que só consome o saldo positivo trazido do mês anterior: não passa para a categoria de pagamento (roteiro 9C; `gasto_coberto_limitado`). Com pagamento no mesmo mês, inferido.
   - Regra usada em `src/motor.rs` (`pagamento_alem_da_divida`): a parte dos pagamentos do mês que deixa o cartão com saldo positivo, além do saldo positivo que ele já tinha no fim do mês anterior, vai para o "A atribuir" do mês (`additional_to_be_budgeted`). Ela continua saindo da categoria de pagamento. Os gastos do cartão contam; as transferências que saem dele para conta orçamentária não. Fecha com 5A–5D e novembro, mas só esse caso foi visto. Falta conferir na tela: pagar a mais com dívida de mês anterior, e gastar no cartão com saldo positivo.
 - Os nomes internos `transfer_on_budget`, `transfer`, `transfer_off_budget` (66689): onde são usados.
 - Regras de empréstimo (`setDebtTransactionTypeIfNeeded`, categoria da dívida).

@@ -420,7 +420,7 @@ pub fn calcular(orcamento: &Orcamento) -> Calculos {
                 month: mes,
                 budgeted: atribuido.get(&(c.id.as_str(), mes)).copied().unwrap_or(0),
                 cash_outflows: Some(direto - movimento.pagamentos),
-                budgeted_spending: estorno_limitado(funded_spending_on_card(&partes), saldo_anterior, movimento, excesso),
+                budgeted_spending: gasto_coberto_limitado(funded_spending_on_card(&partes), saldo_anterior, movimento, excesso),
                 ..Default::default()
             };
             let previa = anterior_da(&c.id);
@@ -492,18 +492,26 @@ fn saldo_positivo_novo(saldo_anterior: i64, mes: Cartao) -> i64 {
 }
 
 /// Gasto coberto que passa para a categoria de pagamento (`budgeted_spending`),
-/// com o estorno limitado: um estorno coberto (`coberto > 0`) só sai da
-/// categoria de pagamento na parte que reduz a dívida do cartão ou que vai
-/// para o "A atribuir" ([`pagamento_alem_da_divida`]). A parte que só deixa o
-/// cartão positivo fica na categoria do estorno, sem sair do pagamento.
+/// com dois limites vistos na tela (roteiros 8 e 9 da análise 03):
 ///
-/// Conferido na tela (roteiro 8 da análise 03): estorno de 20 com dívida de
-/// 50 tirou 20 do pagamento; com cartão em 0 e sem pagamento no mês, não
-/// tirou nada; depois de pagar além da dívida, tirou 20 e o "A atribuir"
-/// subiu 20.
-fn estorno_limitado(coberto: i64, saldo_anterior: i64, mes: Cartao, excesso: i64) -> i64 {
-    if coberto <= 0 {
-        return coberto;
+/// - **gasto** (`coberto < 0`): a parte que só consome o saldo positivo que o
+///   cartão trouxe do mês anterior não passa para o pagamento, porque não
+///   vira dívida. Conferido no 9C: cartão com +10 vindo de setembro, gasto
+///   coberto de 10 em outubro, pagamento ficou 0 / 0. Com pagamentos no
+///   mesmo mês, o crédito consumido é medido pelo saldo do fim do mês
+///   (inferido);
+/// - **estorno** (`coberto > 0`): só sai da categoria de pagamento na parte
+///   que reduz a dívida do cartão ou que vai para o "A atribuir"
+///   ([`pagamento_alem_da_divida`]). A parte que só deixa o cartão positivo
+///   fica na categoria do estorno. Conferido no roteiro 8: estorno de 20 com
+///   dívida de 50 tirou 20 do pagamento; com cartão em 0 e sem pagamento no
+///   mês, não tirou nada; depois de pagar além da dívida, tirou 20 e o
+///   "A atribuir" subiu 20.
+fn gasto_coberto_limitado(coberto: i64, saldo_anterior: i64, mes: Cartao, excesso: i64) -> i64 {
+    if coberto < 0 {
+        let depois = saldo_anterior + mes.pagamentos + mes.gastos;
+        let credito_gasto = (saldo_anterior.max(0) - depois.max(0)).max(0);
+        return coberto + credito_gasto.min(-coberto);
     }
     let so_positivo = saldo_positivo_novo(saldo_anterior, mes) - excesso;
     (coberto - so_positivo).max(0)
