@@ -1,9 +1,9 @@
 //! Cálculos do orçamento feitos no cliente. Valores em milésimos da moeda
 //! (milliunits), como o YNAB guarda.
 //!
-//! `roundMilliDollars` depende do `formattingManager` (casas decimais da
-//! moeda). O modo de arredondamento não foi lido, então quem chama passa a
-//! função de arredondamento.
+//! `roundMilliDollars` depende das casas decimais da moeda; o modo padrão é
+//! `Math.round` (ver [`round_to_currency`] e [`js_round`]). Quem chama passa a
+//! função de arredondamento, mas o padrão do YNAB é `js_round`.
 
 use crate::dates::Date;
 use crate::goals::GoalCalc;
@@ -34,15 +34,24 @@ impl CategoryType {
     }
 }
 
-/// Arredonda milésimos para as casas decimais da moeda (2 para o real) com
-/// a função dada (`f64::round`, `f64::ceil`…). Moedas com 3 casas ou mais
-/// ficam como estão.
-pub fn round_to_currency(milliunits: i64, decimal_digits: u32, mode: impl Fn(f64) -> f64) -> i64 {
-    if decimal_digits >= 3 {
-        return milliunits;
+/// `Math.round` do JS: arredonda a metade para o lado de +∞ (−2,5 vira −2).
+/// É o modo padrão de `roundMilliDollars` (`e=Math.round`).
+pub fn js_round(x: f64) -> f64 {
+    let floor = x.floor();
+    if x - floor >= 0.5 {
+        floor + 1.0
+    } else {
+        floor
     }
-    let step = 10_i64.pow(3 - decimal_digits);
-    mode(milliunits as f64 / step as f64) as i64 * step
+}
+
+/// `roundMilliDollars`: arredonda milésimos para o passo da moeda com a função
+/// dada. O passo é `10^(3 − min(3, casas))` milésimos: 10 para o real (2
+/// casas), 1000 para moeda sem centavo, 1 para moeda com 3 casas ou mais.
+/// Feito como no bundle (`mode(t * n) / n`, com `n = 1/passo`).
+pub fn round_to_currency(milliunits: i64, decimal_digits: u32, mode: impl Fn(f64) -> f64) -> i64 {
+    let n = 1.0 / 10_f64.powi(3 - decimal_digits.min(3) as i32);
+    (mode(milliunits as f64 * n) / n).round() as i64
 }
 
 /// Cálculo de uma categoria num mês (`monthlySubCategoryBudgetCalculation`).
@@ -126,14 +135,32 @@ impl SubCategoryMonthCalc {
     }
 }
 
-/// `overSpent` do mês (≤ 0): soma dos estouros em dinheiro das categorias.
-/// O estouro no crédito fica de fora porque vira dívida no cartão.
+/// Linha "sem categoria" do mês (`budgetMonthDisplayItemForUncategorizedTransactions`
+/// no bundle): uma pseudo-categoria sem atribuído, com as saídas sem categoria.
+pub fn uncategorized_row(cash_outflows: i64, credit_outflows: i64) -> SubCategoryMonthCalc {
+    let mut row = SubCategoryMonthCalc {
+        cash_outflows: Some(cash_outflows),
+        credit_outflows: Some(credit_outflows),
+        balance: Some(cash_outflows + credit_outflows),
+        ..Default::default()
+    };
+    calculate_budgeted_cash_credit_outflows(&mut row);
+    row
+}
+
+/// `overSpent` do mês (≤ 0): soma dos estouros em dinheiro das categorias e da
+/// linha "sem categoria". O estouro no crédito fica de fora porque vira dívida
+/// no cartão.
 ///
-/// Regra nossa: no YNAB este valor vem pronto do servidor (ver
-/// `docs/analise/01-estouro-cartao-metas.md`, seção 2). Saídas sem categoria
-/// entram passando uma pseudo-categoria com atribuído 0.
-pub fn month_over_spent<'a>(categories: impl IntoIterator<Item = &'a SubCategoryMonthCalc>) -> i64 {
-    categories.into_iter().map(SubCategoryMonthCalc::cash_overspent).sum()
+/// Regra nossa, não lida no cálculo do bundle: o `overSpent` chega pronto do
+/// servidor (`over_spent`). A inclusão da linha "sem categoria" vem de a tela
+/// tratá-la como estouro em dinheiro (`hasAnyCashOverSpending`). Ver
+/// `docs/analise/01-estouro-cartao-metas.md`, seção 2.
+pub fn month_over_spent<'a>(
+    categories: impl IntoIterator<Item = &'a SubCategoryMonthCalc>,
+    uncategorized: &SubCategoryMonthCalc,
+) -> i64 {
+    categories.into_iter().map(SubCategoryMonthCalc::cash_overspent).sum::<i64>() + uncategorized.cash_overspent()
 }
 
 /// Gasto de uma categoria num mês, visto de um cartão de crédito.
@@ -168,7 +195,11 @@ pub fn funded_spending_on_card(parts: &[CardSpending]) -> i64 {
 /// Os pagamentos ficam em `cash_outflows` (≤ 0) e o gasto coberto em
 /// `budgeted_spending` (≤ 0).
 ///
-/// Regra nossa (`docs/analise/01-estouro-cartao-metas.md`, seção 3).
+/// O bundle calcula o saldo de toda categoria do mesmo jeito (visto: carrega
+/// só o saldo positivo, soma atribuído, saídas em dinheiro e no crédito). A
+/// parte do cartão depende de o servidor pôr o gasto coberto como saídas no
+/// crédito da categoria de pagamento, com sinal oposto a `budgeted_spending`.
+/// Isso é inferido, não visto. Ver `docs/analise/01-estouro-cartao-metas.md`, seção 3.
 pub fn calculate_credit_card_payment_balance(
     current: &mut SubCategoryMonthCalc,
     previous: Option<&SubCategoryMonthCalc>,

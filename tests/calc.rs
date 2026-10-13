@@ -61,6 +61,35 @@ fn rounds_to_currency_digits() {
 }
 
 #[test]
+fn round_mode_of_the_ynab_is_math_round_half_toward_positive_infinity() {
+    // roundMilliDollars com o padrão Math.round; real = 2 casas = passo de 10 milésimos
+    assert_eq!(round_to_currency(15, 2, js_round), 20);
+    assert_eq!(round_to_currency(-15, 2, js_round), -10, "-1,5 centavo-passo vai para -1");
+    assert_eq!(round_to_currency(-25, 2, js_round), -20);
+    assert_eq!(round_to_currency(-16, 2, js_round), -20);
+    // f64::round arredonda a metade para longe de zero: não é o do YNAB
+    assert_eq!(round_to_currency(-15, 2, f64::round), -20);
+}
+
+#[test]
+fn uncategorized_cash_outflows_count_as_cash_overspending() {
+    // mercado: atribuído 10, gasto 15 em dinheiro (estouro 5)
+    let mut groceries = SubCategoryMonthCalc { budgeted: 10_000, cash_outflows: Some(-15_000), ..Default::default() };
+    calculate_balance(&mut groceries, None, id);
+    calculate_budgeted_cash_credit_outflows(&mut groceries);
+    // lazer: atribuído 3, gasto 8 no cartão (estouro só no crédito)
+    let mut fun = SubCategoryMonthCalc { budgeted: 3_000, credit_outflows: Some(-8_000), ..Default::default() };
+    calculate_balance(&mut fun, None, id);
+    calculate_budgeted_cash_credit_outflows(&mut fun);
+
+    // 4 em dinheiro sem categoria entram; 9 no crédito sem categoria ficam de fora
+    assert_eq!(month_over_spent([&groceries, &fun], &uncategorized_row(-4_000, 0)), -9_000);
+    assert_eq!(month_over_spent([&groceries, &fun], &uncategorized_row(0, -9_000)), -5_000);
+    // entrada sem categoria (estorno) não estoura
+    assert_eq!(month_over_spent([&groceries, &fun], &uncategorized_row(3_000, 0)), -5_000);
+}
+
+#[test]
 fn overspending_is_split_between_cash_and_credit() {
     // mercado: atribuído 10, gasto 15 em dinheiro
     let mut groceries = SubCategoryMonthCalc { budgeted: 10_000, cash_outflows: Some(-15_000), ..Default::default() };
@@ -77,7 +106,7 @@ fn overspending_is_split_between_cash_and_credit() {
     assert_eq!(fun.budgeted_credit_outflows, -3_000);
 
     // só o estouro em dinheiro sai do disponível do mês seguinte
-    assert_eq!(month_over_spent([&groceries, &fun]), -5_000);
+    assert_eq!(month_over_spent([&groceries, &fun], &uncategorized_row(0, 0)), -5_000);
     assert_eq!(cash_overspent_amount(-5_000, 2_000), 0, "categoria com saldo positivo não estoura");
 }
 

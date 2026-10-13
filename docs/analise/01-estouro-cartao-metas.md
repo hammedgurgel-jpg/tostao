@@ -6,6 +6,7 @@ As regras abaixo estão descritas com nossas palavras; o código do YNAB não fo
 
 Legenda de confiança:
 - **visto**: a fórmula está no bundle e foi lida;
+- **reproduzido**: a regra foi escrita em Rust e testada com casos concretos (`tests/calc.rs`, `tests/goals.rs`);
 - **inferido**: deduzido de nomes, textos de tela e uso, sem a fórmula à vista;
 - **não achado**: não está no bundle web.
 
@@ -35,14 +36,22 @@ Não dá para copiar o "deixa o servidor calcular" do YNAB, porque o servidor so
   - estouro em dinheiro "será descontado do que você tem para atribuir no mês seguinte";
   - estouro no crédito "vira dívida no cartão".
 
-### Do mês (`overSpent` do `monthlyBudgetCalculation`) — não achado, inferido
+### Do mês (`overSpent` do `monthlyBudgetCalculation`) — soma não achada no cliente; regra inferida
 
-- O valor só chega pronto do servidor (`over_spent`). Nenhum código do bundle o calcula.
-- Pelo uso, `disponível(mês) = disponível(mês-1) + overSpent(mês-1) + receita + adicional − atribuído`, e pela tela "Cash overspending in {mês anterior}", a regra provável é:
+- **Visto**: o cliente nunca calcula `overSpent`. Ele só lê e copia o campo do servidor `over_spent` (offsets 1795626, 1884453, 1886616, 1887272). O `BudgetMonth` da biblioteca Kotlin (offset 1374956, construtor em ~1065362) também não tem o campo. Por isso a soma **não está no bundle**.
+- **Visto**: o disponível do mês seguinte usa o `overSpent` do mês anterior: `availableToBudget = o + u + (receita + adicional − atribuído)`, com `u = overSpent` (offset 1795822); e `overSpentInPreviousMonth` (offset 2726708).
+- **Visto**: a linha "sem categoria" (`budgetMonthDisplayItemForUncategorizedTransactions`, criada em 2993749 e 3007392 com a mesma classe de item das categorias) entra em `hasAnyCashOverSpending` (offset 2993229). Essa checagem só olha `isOverSpentOnCash`, ou seja, o estouro **em dinheiro**. A linha só aparece quando `uncategorizedBalance` ou `uncategorizedOutflows` é diferente de zero (offset 2990948).
+- **Regra (inferida)**:
 
-  > `overSpent(mês)` = soma, nas categorias do mês, do **estouro em dinheiro** (valor ≤ 0). O estouro no crédito não entra; ele fica como dívida no cartão.
+  > `overSpent(mês)` = soma do **estouro em dinheiro** das categorias do mês, mais o estouro em dinheiro da linha "sem categoria" (≤ 0). O estouro no crédito não entra: vira dívida no cartão. A linha "sem categoria" tem atribuído 0, então o estouro dela é `min(saídas em dinheiro sem categoria, 0)`.
 
-- Falta decidir se as saídas sem categoria (`uncategorizedCashOutflows`, guardadas no mês) também entram. A sugestão é que sim: dinheiro gasto sem categoria também sai do "A atribuir".
+- **Decisão sobre as saídas sem categoria**: entram, só as **em dinheiro**. Isso é inferido: a tela trata a linha "sem categoria" como um item de estouro em dinheiro, e a soma em si é feita pelo servidor, sem código no bundle.
+- Em `src/calc.rs`: `month_over_spent` recebe a linha "sem categoria" (`uncategorized_row`). Testes em `tests/calc.rs`: `uncategorized_cash_outflows_count_as_cash_overspending` (reproduzido).
+
+**Teste na tela (para confirmar a regra)**: num orçamento de teste, sem categoria escolhida, gaste 40 em dinheiro numa conta corrente, sem atribuir nada.
+1. No mês seguinte, o "A atribuir" deve cair 40 em relação ao que ficaria sem esse gasto.
+2. Repita com o mesmo gasto no cartão de crédito sem categoria: o "A atribuir" não deve mudar.
+Se o passo 1 não cair, a regra está errada.
 
 ## 3. Cartão de crédito
 
@@ -78,17 +87,28 @@ Estado do pagamento (66883), na ordem em que é decidido:
 5. há estouro no crédito → `CreditOverspending`;
 6. senão → `Underfunded`.
 
-### Movimento do dinheiro para o pagamento — inferido
+### Saldo da categoria de pagamento — visto em parte, inferido na soma
 
-O mecanismo central do cartão não está no web:
-- quando se gasta no cartão numa categoria que tem dinheiro, o valor coberto (`budgetedCreditOutflows`) passa da categoria para a categoria de pagamento;
-- quando se paga o cartão, o valor sai da categoria de pagamento.
+O que foi visto no bundle:
+- **Saldo genérico** (módulo 80211, `calculateBalance`, offset 1810221; a conta em 1810483): `saldo = max(saldo do mês anterior, 0) + atribuído + saídas em dinheiro + saídas no crédito`, arredondado com `roundMilliDollars`. Vale para todas as categorias, inclusive a de pagamento; o saldo negativo do mês anterior não passa.
+- **Só na categoria de pagamento** (offset 1809945): `budgetedSpending`, `allSpending`, `allSpendingSinceLastPayment`, `paymentAverage`, `positiveCashOutflows` e `additionalToBeBudgeted` são mantidos. Nas outras categorias são zerados (`null`).
+- **Gasto coberto**: a tela mostra `−budgetedSpending` como "gasto financiado no cartão" (`fundedSpendingOnCard`, offset 2192967; `fundedSpendingThisMonth`, offset 2133352). Então `budgetedSpending` é um valor ≤ 0 vindo do servidor.
 
-Proposta para o Tostão:
+O que não foi visto:
+- o servidor monta as saídas no crédito da categoria de pagamento (quanto dos gastos no cartão passou para ela) e o `budgetedSpending` a partir das transações. O bundle só recebe esses valores;
+- o sinal dos pagamentos dentro da categoria (saída, valor ≤ 0). O painel mostra o módulo do valor.
 
-> saldo(pagamento do cartão X, mês) = saldo positivo do mês anterior + atribuído + Σ |saídas no crédito cobertas| das transações da conta X no mês − Σ pagamentos da conta X no mês.
+**Regra adotada (inferida)**:
 
-Precisa de teste com casos reais antes de fixar.
+> saldo(pagamento do cartão X, mês) = saldo positivo do mês anterior + atribuído + saídas em dinheiro da categoria (pagamentos, ≤ 0) − `budgetedSpending` (gasto coberto, ≤ 0 → soma seu módulo).
+
+Ela é igual à fórmula genérica do bundle **se** as saídas no crédito da categoria de pagamento forem exatamente −`budgetedSpending`. Esse ponto não aparece no bundle. Em `src/calc.rs` (`calculate_credit_card_payment_balance`), testes em `tests/calc.rs` (`credit_card_payment_collects_funded_spending_and_pays_out`, reproduzido).
+
+**Teste na tela (para confirmar a regra)**: num orçamento de teste, com um cartão de crédito:
+1. Atribua 100 à categoria "Mercado" e gaste 30 no cartão nela. A categoria de pagamento do cartão deve passar a mostrar 30 disponíveis (o gasto coberto passa para ela).
+2. Pague a fatura de 30 a partir da conta corrente. A categoria de pagamento deve voltar a 0 e o "Mercado" continuar com 70.
+3. Gaste 30 no cartão numa categoria **sem** dinheiro: a categoria de pagamento não deve ganhar nada (isso é o estouro no crédito, que vira dívida).
+Se o passo 1 mostrar outro valor, a regra do saldo está errada.
 
 ## 4. Metas
 
@@ -169,6 +189,17 @@ Totais usados na tela (80211):
   - Sem valor por mês, é o financiado acima do alvo efetivo. Em TB, conta o saldo do mês anterior mais o atribuído contra o alvo mais as saídas.
   - Nos dois casos, o excesso fica limitado ao que sobra de saldo depois das transações agendadas.
 
+### Arredondamento da moeda (`roundMilliDollars`) — visto, reproduzido
+
+- Definição (`CurrencyFormatter`, offset 2249444): `roundMilliDollars(t, e = Math.round) = e(t·n) / n`, com `n = 1 / passo`.
+- Passo (offset 2251904, `getMinimumAmount`): `10^(3 − min(3, casas decimais))` milésimos. Para o real (2 casas): **10 milésimos**, ou seja, centavo. Moeda com 3 casas ou mais: passo 1 (não arredonda).
+- **Modo padrão: `Math.round` do JS**, que arredonda a metade para o lado de +∞ (−2,5 vira −2; −1,5 vira −1). Não é o arredondamento "para longe de zero" do Rust (`f64::round`).
+- Usos vistos:
+  - saldo da categoria (`calculateBalance`, 1810483) e disponível do mês (`availableToBudget`, 1795822): modo padrão;
+  - "quanto atribuir" das metas TBD e NEED (`goalTarget`, 1813399 e 1980571): **`Math.ceil`**. Antes disso, o valor já passa por `Math.ceil(necessário / meses restantes)`.
+- Em Rust: `calc::js_round` (= `Math.round`) e `calc::round_to_currency` (= `roundMilliDollars`). Testes: `round_mode_of_the_ynab_is_math_round_half_toward_positive_infinity`, `rounds_to_currency_digits` (tests/calc.rs) e `target_balance_by_date_spreads_over_remaining_months` (tests/goals.rs, 166.670 = 1.000,00 em 6 meses arredondado para cima no centavo).
+- Assumido: o real tem 2 casas decimais (moeda do app).
+
 ## 5. Meses futuros e "A atribuir" em cada mês — visto (944)
 
 - O painel de planejamento lista os meses depois do mês em foco até o último mês com alguma atribuição ou até o primeiro com "A atribuir" negativo, o que vier depois.
@@ -202,28 +233,28 @@ Totais usados na tela (80211):
 
 ## 8. O que falta e próximos alvos
 
-Já implementado no Tostão (2026-10-13), com testes em `tests/goals.rs` e `tests/calc.rs`:
+Já implementado no Tostão, com testes em `tests/goals.rs` e `tests/calc.rs`:
 - **Metas** (seção 4), em `src/goals.rs`. Os totais de falta também, sem a parte do painel do cartão.
 - **Estouro** por categoria e do mês (seção 2), em `src/calc.rs`.
-  - O estouro do mês usa a regra provável.
-- **Saldo da categoria de pagamento do cartão** (seção 3, proposta), em `src/calc.rs`.
+  - O estouro do mês soma o estouro em dinheiro das categorias e da linha "sem categoria" (regra inferida, abaixo).
+- **Saldo da categoria de pagamento do cartão** (seção 3), em `src/calc.rs`.
   - Quando uma categoria usa vários cartões, a parte coberta é dividida entre eles na proporção do gasto. Essa regra é nossa.
+- **Arredondamento** (seção 4): `js_round` (Math.round) e `round_to_currency`, em `src/calc.rs`.
 - **Datas** com as regras do moment.js, em `src/dates.rs`.
 - Diferença conhecida: na meta semanal com frequência > 1, o YNAB pode chegar a frações de milésimo; o Tostão arredonda.
 
-Ainda não achamos:
+Estado dos três pontos em aberto (2026-10-13):
 
-1. a fórmula do `overSpent` do mês (provável regra acima);
-2. o cálculo do saldo da categoria de pagamento do cartão (proposta acima);
-3. o modo de arredondamento da moeda (`roundMilliDollars`).
+1. **`overSpent` do mês** — **inferido**. Regra: estouro em dinheiro das categorias + estouro em dinheiro da linha "sem categoria". O estouro no crédito fica de fora. A soma não está no bundle (o servidor calcula); a inclusão da linha "sem categoria" vem da tela (`hasAnyCashOverSpending`, offset 2993229). Teste na tela: seção 2.
+2. **Saldo da categoria de pagamento do cartão** — **inferido** na soma; a parte genérica é **visto** (`calculateBalance`, offset 1810221). Regra: saldo positivo do mês anterior + atribuído + pagamentos (saídas em dinheiro) − `budgetedSpending`. Falta ver no bundle que as saídas no crédito da categoria de pagamento são −`budgetedSpending`. Teste na tela: seção 3.
+3. **Arredondamento (`roundMilliDollars`)** — **visto e reproduzido**. Modo: `Math.round` (metade para +∞) no saldo e no disponível; `Math.ceil` na meta TBD/NEED. Passo: 10 milésimos para o real. Seção 4.
 
 Resolvidos na análise 02: a geração das datas das agendadas (§2), como a movimentação altera o atribuído (§1) e a reconciliação de contas (§3).
 
-Para os itens 1 a 3, o próximo passo é observar a tela num orçamento de teste e, se preciso, ler a biblioteca Kotlin do bundle (offsets ~1,30M–1,45M).
+Para os itens 1 e 2, a única forma de passar de inferido a visto é observar a tela de um orçamento de teste, nos passos das seções 2 e 3. A biblioteca Kotlin (offsets ~1,30M–1,45M) foi lida em parte: tem `Calculations` com os campos do cartão (1312078–1312411), mas a lógica da soma do mês não aparece nela.
 
 Outras funcionalidades ainda não olhadas:
 - regras de empréstimo/hipoteca além da reconciliação (`isLoanAccount`);
 - regras de renomear beneficiário (`be_payee_rename_conditions`);
 - idade do dinheiro (`ageOfMoney`);
-- receita esperada (`be_expected_income`);
-- reconciliação de contas.
+- receita esperada (`be_expected_income`).
