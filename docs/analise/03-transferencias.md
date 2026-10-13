@@ -142,7 +142,7 @@ Resumo:
 
 - O cálculo é do servidor (análise 01 §1), então a regra de soma não está no bundle. Pelos campos do cliente (`otherInflowsThisMonth`, 2115236; `x`, 3022305), uma transferência entre orçamentárias **não conta** como receita nem como gasto de categoria.
 - Na ponta orçamentária de uma transferência para acompanhamento, a transação conta como qualquer outra com aquela categoria. **Inferido**, a conferir nos roteiros 4.
-- **Não verificado:** se uma entrada sem categoria (de acompanhamento para orçamentária) entra no "A atribuir". Roteiro 4B.
+- **Conferido na tela (roteiro 4B):** uma entrada sem categoria (de acompanhamento para orçamentária) **não** entra no "A atribuir". Ela fica na linha "Uncategorized Transactions" com disponível positivo.
 
 ### Empréstimo — visto, não aprofundado
 
@@ -326,6 +326,14 @@ Antes: atribui 300 a Investimentos ("A atribuir" 700).
 | 4D | Na conta Investimento, apaga a ponta do 4B | 700 | 300 | 0 | 700 | A entrada da Corrente some junto, e a receita de 100 sai do "A atribuir". |
 | 4E | Na Corrente, abre a ponta do 4A e tenta apagar a categoria; salva | 700 | 300 | 300 ? | 700 | A ponta vira "sem categoria" (−300). Esperado: Investimentos volta a 300 e aparece a linha "sem categoria". Em novembro, "A atribuir" cai 300 (estouro em dinheiro, análise 01 §2) ? |
 
+**Conferência na tela (2026-10-13), roteiro 4.** Os 300 **não** foram atribuídos a Investimentos antes. Por isso o "A atribuir" ficou 300 acima da tabela e Investimentos ficou estourada.
+- 4A: Corrente 700 e Investimento 300. A ponta da Corrente tem a categoria "Mensal: Investimento". A tela da conta Investimento **nem tem coluna de categoria**. No plano, Investimentos ficou com atividade −300 e disponível −300 (estourada), e o "A atribuir" continuou 1.000. **Conferido**: a ponta orçamentária é um gasto comum da categoria.
+- 4B: Corrente 800 e Investimento 200. Na Corrente, a entrada de 100 apareceu com "This needs a category" e o aviso "1 new transaction to approve or categorize". No plano apareceu a linha "Uncategorized Transactions" com atividade +100 e disponível +100, e o **"A atribuir" continuou 1.000**. **Conferido**: entrada sem categoria vinda de acompanhamento **não** entra no "A atribuir". Ela fica parada na linha "sem categoria", com saldo positivo.
+- 4C: a entrada passou a "Inflow: Ready to Assign". O plano depois disso não foi visto (esperado: "A atribuir" 1.100).
+- 4D: apagar a ponta na conta Investimento apagou a da Corrente (Corrente 700, Investimento 300). **Conferido.**
+- 4E: tirar a categoria da ponta do 4A deixou "This needs a category" (−300) e manteve Corrente 700. O plano depois disso não foi visto.
+- As pontas criadas pelos dois lados nasceram **não compensadas**.
+
 ### Roteiro 5 — cartão de crédito
 
 Orçamento novo (ou desfaça os roteiros anteriores): Corrente 1.000; atribui 100 a Mercado ("A atribuir" 900).
@@ -384,7 +392,7 @@ Orçamento do roteiro 3 no início (Corrente 1.000, Poupança 0), 100 atribuído
 - Quem chama `setTransferCounterpartClearedStatus` e `getOtherSideReconciledTransfers` (talvez outro chunk do bundle).
 - O caso "B existe mas não aponta de volta para A": quando acontece.
 - A soma do servidor para receita e categorias com transferências (só inferida pelos painéis do cliente).
-- Se uma entrada sem categoria vinda de acompanhamento entra no "A atribuir" (roteiro 4B).
+- ~~Se uma entrada sem categoria vinda de acompanhamento entra no "A atribuir"~~: não entra, conferido no roteiro 4B. Ela fica na linha "sem categoria" com saldo positivo. Falta saber o que acontece com esse saldo positivo na virada do mês.
 - Se uma saída do cartão para a corrente volta para a categoria de pagamento (roteiro 5D).
 - Os nomes internos `transfer_on_budget`, `transfer`, `transfer_off_budget` (66689): onde são usados.
 - Regras de empréstimo (`setDebtTransactionTypeIfNeeded`, categoria da dívida).
