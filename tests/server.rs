@@ -5,11 +5,11 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Map, Value};
-use ynab_sync::api::{ApiError, ApiV1, ServerError};
-use ynab_sync::knowledge::BudgetKnowledge;
-use ynab_sync::protocol::*;
-use ynab_sync::server::{InMemoryTransport, SyncServer};
-use ynab_sync::sync::*;
+use tostao::api::{ApiError, ApiV1, ServerError};
+use tostao::knowledge::BudgetKnowledge;
+use tostao::protocol::*;
+use tostao::server::{InMemoryTransport, SyncServer};
+use tostao::sync::*;
 
 const SCHEMA: i64 = 42;
 const BUDGET: &str = "orcamento-1";
@@ -338,5 +338,5 @@ fn unknown_operation_is_an_error() {
     let err = srv
         .handle_catalog("familia", "aparelho-a", &CatalogRequest { operation_name: "loginUser".into(), request_data: "{}".into() })
         .unwrap_err();
-    assert_eq!(err.id, ynab_sync::server::ERR_UNKNOWN_OPERATION);
+    assert_eq!(err.id, tostao::server::ERR_UNKNOWN_OPERATION);
 }

@@ -1,5 +1,7 @@
-//! Reimplementação em Rust do protocolo de sincronização de orçamento e dos
-//! cálculos do cliente web do YNAB.
+//! Tostão: núcleo do app de orçamento da família (sincronização entre aparelhos
+//! e servidor próprio, e cálculos do orçamento).
+//!
+//! O protocolo e os cálculos foram reconstruídos a partir do cliente web do YNAB.
 //!
 //! Fonte: análise do bundle `chunk.7bd67ec4d1cff4ed86e3.js` (SHA-256
 //! c7e8b170…), feita com o REA em 2026-10-13, mais uma captura de rede

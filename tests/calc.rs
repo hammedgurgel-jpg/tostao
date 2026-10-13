@@ -1,4 +1,4 @@
-use ynab_sync::calc::*;
+use tostao::calc::*;
 
 fn id(v: i64) -> i64 {
     v

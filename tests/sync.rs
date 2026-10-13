@@ -1,10 +1,10 @@
 use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
-use ynab_sync::api::{ApiError, ApiV1, HttpResponse, ServerError, Transport};
-use ynab_sync::knowledge::BudgetKnowledge;
-use ynab_sync::protocol::*;
-use ynab_sync::sync::*;
+use tostao::api::{ApiError, ApiV1, HttpResponse, ServerError, Transport};
+use tostao::knowledge::BudgetKnowledge;
+use tostao::protocol::*;
+use tostao::sync::*;
 
 const SCHEMA: i64 = 42;
 
@@ -24,7 +24,7 @@ impl Transport for FakeTransport {
         }
         match &self.reply {
             Ok(data) => Ok(HttpResponse {
-                headers: vec![("X-YNAB-Server-Version".into(), "9.9.9".into())],
+                headers: vec![("X-Tostao-Server-Version".into(), "9.9.9".into())],
                 data: data.clone(),
             }),
             Err(e) => Err(ApiError::Server(e.clone())),

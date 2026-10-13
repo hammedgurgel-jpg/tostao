@@ -1,4 +1,4 @@
-# Orçamento da família (nome provisório)
+# Tostão
 
 App de orçamento por envelopes para uso pessoal e da família: todo dinheiro que entra recebe uma função (é atribuído a uma categoria) antes de ser gasto. Vários aparelhos editam o mesmo orçamento e se sincronizam com um servidor próprio.
 

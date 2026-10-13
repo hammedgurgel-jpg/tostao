@@ -11,7 +11,7 @@ use serde_json::Value;
 pub const CATALOG_PATH: &str = "/api/v1/catalog";
 
 /// Cabeçalho de resposta lido como versão do servidor.
-pub const SERVER_VERSION_HEADER: &str = "X-YNAB-Server-Version";
+pub const SERVER_VERSION_HEADER: &str = "X-Tostao-Server-Version";
 
 /// Envelope enviado em `/api/v1/catalog`: o nome da operação e o corpo
 /// serializado como texto JSON dentro de `request_data`.

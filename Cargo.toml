@@ -1,8 +1,8 @@
 [package]
-name = "ynab-sync"
+name = "tostao"
 version = "0.1.0"
 edition = "2021"
-description = "Reimplementação do protocolo de sincronização de orçamento e dos cálculos do cliente web do YNAB, a partir de análise do bundle publicado"
+description = "Tostão: app de orçamento por envelopes para a família, com sincronização entre aparelhos e servidor próprio"
 publish = false
 
 [dependencies]
