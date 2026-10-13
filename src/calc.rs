@@ -137,13 +137,23 @@ impl SubCategoryMonthCalc {
 
 /// Linha "sem categoria" do mês (`budgetMonthDisplayItemForUncategorizedTransactions`
 /// no bundle): uma pseudo-categoria sem atribuído, com as saídas sem categoria.
-pub fn uncategorized_row(cash_outflows: i64, credit_outflows: i64) -> SubCategoryMonthCalc {
+/// Como uma categoria, carrega o saldo positivo do mês anterior (`previous`).
+///
+/// O carregamento não está no bundle; foi conferido na tela (análise 03,
+/// roteiro 9B): +100 sem categoria em setembro apareceram em outubro como
+/// "Left Over from Last Month", e uma saída sem categoria de 10 em outubro
+/// deixou a linha em 90, sem estouro.
+pub fn uncategorized_row(
+    cash_outflows: i64,
+    credit_outflows: i64,
+    previous: Option<&SubCategoryMonthCalc>,
+) -> SubCategoryMonthCalc {
     let mut row = SubCategoryMonthCalc {
         cash_outflows: Some(cash_outflows),
         credit_outflows: Some(credit_outflows),
-        balance: Some(cash_outflows + credit_outflows),
         ..Default::default()
     };
+    calculate_balance(&mut row, previous, |v| v);
     calculate_budgeted_cash_credit_outflows(&mut row);
     row
 }

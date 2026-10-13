@@ -442,6 +442,7 @@ pub fn calcular(orcamento: &Orcamento) -> Calculos {
         let mut sem_categoria = uncategorized_row(
             soma.map_or(0, |s| s.sem_categoria_dinheiro),
             soma.map_or(0, |s| s.sem_categoria_credito),
+            anterior.map(|a| &a.sem_categoria),
         );
         sem_categoria.month = mes;
 

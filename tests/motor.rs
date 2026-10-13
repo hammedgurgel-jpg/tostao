@@ -784,10 +784,19 @@ fn roteiro_8_pagamento_alem_da_divida_do_mes_anterior() {
     assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (950_000, 940_000));
 }
 
+/// Muda a data das duas pontas de uma transferência.
+fn data_das_pontas(r: &mut Roteiro, (a, b): (String, String), data: Date) {
+    r.transacao(&a).data = data;
+    r.transacao(&b).data = data;
+}
+
 #[test]
-fn roteiro_9_previsao_do_motor() {
-    // Previsão do motor para o roteiro 9 da análise 03; ainda não conferido
-    // na tela. Saldo inicial em 01/09.
+fn roteiro_9_primeira_tentativa() {
+    // Conferido na tela em 2026-10-13, como foi lançado: o "pagamento" do
+    // 9A foi uma saída da Corrente em Mercado (sem gasto no Cartão), o gasto
+    // do 9C foi uma saída sem categoria na Corrente, a transferência do 9D
+    // ficou com a categoria "Inflow: Ready to Assign", e a Farmácia do 9E
+    // recebeu os 60 em novembro.
     const SET: u32 = 9;
     let mut r = Roteiro::novo();
     r.transacao("t1").data = dia(SET, 1);
@@ -796,30 +805,94 @@ fn roteiro_9_previsao_do_motor() {
     let c = r.calcula();
     assert_eq!((c.a_atribuir(SET), c.a_atribuir(OUT), c.a_atribuir(NOV)), (1_000_000, 1_000_000, 1_000_000));
 
-    // 9A: 50 no Cartão em Mercado (15/09, com 50 atribuídos) e pagamento de
-    // 60 em 20/09: +10 no A atribuir de setembro; outubro herda o vermelho.
+    // 9A como lançado: 50 em Mercado em setembro e 60 da Corrente em Mercado.
     r.orc.atribuicoes.push(Atribuicao { categoria: "mercado".into(), mes: dia(SET, 1), valor: 50_000 });
-    let gasto = r.lanca("cartao", -50_000, Some("mercado"));
-    r.transacao(&gasto).data = dia(SET, 15);
-    let (a, b) = r.transfere("corrente", "cartao", 60_000, None);
-    r.transacao(&a).data = dia(SET, 20);
-    r.transacao(&b).data = dia(SET, 20);
+    let saida = r.lanca("corrente", -60_000, Some("mercado"));
+    r.transacao(&saida).data = dia(SET, 11);
     let c = r.calcula();
-    assert_eq!((c.conta("corrente"), c.conta("cartao")), (940_000, 10_000));
-    assert_eq!((c.atividade(SET, "pagamento-cartao"), c.disponivel(SET, "pagamento-cartao")), (-10_000, -10_000));
-    assert_eq!(c.a_atribuir(SET), 960_000);
-    assert_eq!(c.disponivel(OUT, "pagamento-cartao"), 0);
-    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (950_000, 950_000));
+    assert_eq!((c.conta("corrente"), c.conta("cartao")), (940_000, 0));
+    assert_eq!((c.atividade(SET, "mercado"), c.disponivel(SET, "mercado")), (-60_000, -10_000));
+    assert_eq!(c.cat(SET, "mercado").cash_overspent(), -10_000, "vermelho");
+    assert_eq!((c.a_atribuir(SET), c.a_atribuir(OUT)), (950_000, 940_000));
 
-    // 9B: 100 do Investimento para a Corrente em 20/09, sem categoria: não
-    // entra no A atribuir, e o motor não carrega o positivo para outubro.
-    let (a, b) = r.transfere("investimento", "corrente", 100_000, None);
-    r.transacao(&a).data = dia(SET, 20);
-    r.transacao(&b).data = dia(SET, 20);
+    // 9B: 100 do Investimento para a Corrente em 01/09, sem categoria.
+    let volta = r.transfere("investimento", "corrente", 100_000, None);
+    data_das_pontas(&mut r, volta, dia(SET, 1));
     let c = r.calcula();
     assert_eq!((c.conta("corrente"), c.conta("investimento")), (1_040_000, -100_000));
-    assert_eq!(c.mes(dia(SET, 1)).unwrap().sem_categoria.balance, Some(100_000));
-    assert_eq!(c.mes(dia(OUT, 1)).unwrap().sem_categoria.balance, Some(0));
+    let sem = &c.mes(dia(SET, 1)).unwrap().sem_categoria;
+    assert_eq!((sem.cash_outflows, sem.balance), (Some(100_000), Some(100_000)));
+    assert_eq!((c.a_atribuir(SET), c.a_atribuir(OUT)), (950_000, 940_000));
+    // Outubro: o positivo é carregado ("Left Over from Last Month" 100).
+    let sem = &c.mes(dia(OUT, 1)).unwrap().sem_categoria;
+    assert_eq!((sem.balance_previous_month, sem.balance), (Some(100_000), Some(100_000)));
+
+    // 9C como lançado: saída de 10 sem categoria na Corrente, em outubro. A
+    // linha fica com 90 e não estoura.
+    r.lanca("corrente", -10_000, None);
+    let c = r.calcula();
+    assert_eq!(c.conta("corrente"), 1_030_000);
+    let sem = &c.mes(dia(OUT, 1)).unwrap().sem_categoria;
+    assert_eq!((sem.cash_outflows, sem.balance, sem.cash_overspent()), (Some(-10_000), Some(90_000), 0));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (940_000, 940_000));
+
+    // 9D como lançado: 300 da Corrente para o Investimento com a categoria
+    // "Inflow: Ready to Assign": sai do A atribuir no mesmo mês.
+    r.transfere("corrente", "investimento", 300_000, Some("receita"));
+    let c = r.calcula();
+    assert_eq!((c.conta("corrente"), c.conta("investimento")), (730_000, 200_000));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (640_000, 640_000));
+    let sem = &c.mes(dia(NOV, 1)).unwrap().sem_categoria;
+    assert_eq!((sem.balance_previous_month, sem.balance), (Some(90_000), Some(90_000)));
+
+    // 9E como lançado: Farmácia com 60 em novembro; 30 no Cartão e 70 no
+    // Cartão 2 em outubro, sem dinheiro.
+    r.cartao("cartao2");
+    r.orc.atribuicoes.push(Atribuicao { categoria: "farmacia".into(), mes: dia(NOV, 1), valor: 60_000 });
+    r.lanca("cartao", -30_000, Some("farmacia"));
+    r.lanca("cartao2", -70_000, Some("farmacia"));
+    let c = r.calcula();
+    assert_eq!((c.conta("cartao"), c.conta("cartao2")), (-30_000, -70_000));
+    assert_eq!((c.atividade(OUT, "farmacia"), c.disponivel(OUT, "farmacia")), (-100_000, -100_000));
+    assert_eq!(c.cat(OUT, "farmacia").credit_overspent(), -100_000, "amarelo");
+    assert_eq!((c.disponivel(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao2")), (0, 0));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (580_000, 580_000), "60 atribuídos em novembro");
+    assert_eq!(c.disponivel(NOV, "farmacia"), 60_000);
+    assert_eq!(c.mes(dia(NOV, 1)).unwrap().sem_categoria.balance, Some(90_000));
+}
+
+#[test]
+fn roteiro_9_segunda_tentativa_previsao() {
+    // Previsão do motor para a segunda tentativa do roteiro 9 (análise 03),
+    // ainda não conferida na tela. Parte da limpeza: saldo inicial em 01/09,
+    // 50 em Mercado em setembro e a entrada sem categoria do 9B.
+    const SET: u32 = 9;
+    let mut r = Roteiro::novo();
+    r.transacao("t1").data = dia(SET, 1);
+    r.cartao("cartao");
+    r.cartao("cartao2");
+    r.conta("investimento", TipoConta::Dinheiro, false);
+    r.orc.atribuicoes.push(Atribuicao { categoria: "mercado".into(), mes: dia(SET, 1), valor: 50_000 });
+    let volta = r.transfere("investimento", "corrente", 100_000, None);
+    data_das_pontas(&mut r, volta, dia(SET, 1));
+    let c = r.calcula();
+    assert_eq!((c.conta("corrente"), c.conta("investimento")), (1_100_000, -100_000));
+    assert_eq!((c.disponivel(SET, "mercado"), c.disponivel(OUT, "mercado")), (50_000, 50_000));
+    let sem = |c: &Calculos, m| c.mes(dia(m, 1)).unwrap().sem_categoria.balance.unwrap();
+    assert_eq!((sem(&c, SET), sem(&c, OUT), sem(&c, NOV)), (100_000, 100_000, 100_000));
+    assert_eq!((c.a_atribuir(SET), c.a_atribuir(OUT), c.a_atribuir(NOV)), (950_000, 950_000, 950_000));
+
+    // 9A: 50 no Cartão em Mercado (15/09) e pagamento de 60 em 20/09: +10
+    // no A atribuir de setembro; outubro herda o vermelho do Pagamento.
+    let gasto = r.lanca("cartao", -50_000, Some("mercado"));
+    r.transacao(&gasto).data = dia(SET, 15);
+    let pagamento = r.transfere("corrente", "cartao", 60_000, None);
+    data_das_pontas(&mut r, pagamento, dia(SET, 20));
+    let c = r.calcula();
+    assert_eq!((c.conta("corrente"), c.conta("cartao")), (1_040_000, 10_000));
+    assert_eq!((c.atividade(SET, "mercado"), c.disponivel(SET, "mercado")), (-50_000, 0));
+    assert_eq!((c.atividade(SET, "pagamento-cartao"), c.disponivel(SET, "pagamento-cartao")), (-10_000, -10_000));
+    assert_eq!(c.disponivel(OUT, "pagamento-cartao"), 0);
     assert_eq!((c.a_atribuir(SET), c.a_atribuir(OUT), c.a_atribuir(NOV)), (960_000, 950_000, 950_000));
 
     // 9C: atribui 10 a Mercado e gasta em outubro o crédito do cartão: não
@@ -828,19 +901,20 @@ fn roteiro_9_previsao_do_motor() {
     r.lanca("cartao", -10_000, Some("mercado"));
     let c = r.calcula();
     assert_eq!(c.conta("cartao"), 0);
+    assert_eq!((c.atividade(OUT, "mercado"), c.disponivel(OUT, "mercado")), (-10_000, 0));
     assert_eq!((c.atividade(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao")), (10_000, 10_000));
-    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (940_000, 940_000));
+    assert_eq!((c.a_atribuir(SET), c.a_atribuir(OUT), c.a_atribuir(NOV)), (950_000, 940_000, 940_000));
     assert_eq!(c.disponivel(NOV, "pagamento-cartao"), 10_000);
 
-    // 9D (roteiro 4E): 300 da Corrente para o Investimento, sem categoria.
+    // 9D (roteiro 4E): 300 da Corrente para o Investimento, sem categoria. A
+    // linha "sem categoria" de outubro vai de 100 a −200 e desconta em novembro.
     r.transfere("corrente", "investimento", 300_000, None);
     let c = r.calcula();
     assert_eq!((c.conta("corrente"), c.conta("investimento")), (740_000, 200_000));
-    assert_eq!(c.mes(dia(OUT, 1)).unwrap().sem_categoria.balance, Some(-300_000));
-    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (940_000, 640_000));
+    assert_eq!((sem(&c, OUT), sem(&c, NOV)), (-200_000, 0));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (940_000, 740_000));
 
-    // 9E: Farmácia com 60 gasta 30 no Cartão e 70 no Cartão 2.
-    r.cartao("cartao2");
+    // 9E: Farmácia com 60 em outubro gasta 30 no Cartão e 70 no Cartão 2.
     r.atribui("farmacia", 60_000);
     assert_eq!(r.calcula().a_atribuir(OUT), 880_000);
     r.lanca("cartao", -30_000, Some("farmacia"));
@@ -851,6 +925,6 @@ fn roteiro_9_previsao_do_motor() {
     assert_eq!((c.atividade(OUT, "farmacia"), c.disponivel(OUT, "farmacia")), (-100_000, -40_000));
     assert_eq!(c.cat(OUT, "farmacia").credit_overspent(), -40_000, "amarelo");
     assert_eq!((c.disponivel(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao2")), (28_000, 42_000));
-    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (880_000, 580_000));
+    assert_eq!((c.a_atribuir(SET), c.a_atribuir(OUT), c.a_atribuir(NOV)), (890_000, 880_000, 680_000));
     assert_eq!((c.disponivel(NOV, "pagamento-cartao"), c.disponivel(NOV, "pagamento-cartao2")), (28_000, 42_000));
 }
