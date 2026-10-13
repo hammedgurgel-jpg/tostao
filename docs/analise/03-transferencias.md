@@ -796,6 +796,10 @@ Confira (Farmácia gastou 100 e tinha 60):
 
 Mande uma captura do plano (Sep, Oct e Nov) e da tela "All Accounts" no fim de cada etapa.
 
+##### Conferência da segunda tentativa (2026-10-13)
+
+- **Etapa 1 (limpeza)**: Corrente 1.100, Investimento −100, Cartão 0, Cartão 2 0. Setembro: Uncategorized +100 / 100, Mercado 50 / 0 / 50, Ready to Assign 950. Outubro: Uncategorized 0 / **100**, Mercado 50, "Left Over from Last Month" 150 (100 sem categoria + 50 de Mercado), Ready to Assign 950. **Conferido**, inclusive o carregamento do "sem categoria" positivo pela segunda vez.
+
 #### Primeira tentativa (2026-10-13)
 
 Teste `roteiro_9_primeira_tentativa`.
