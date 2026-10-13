@@ -183,7 +183,7 @@ Resumo:
 - A principal **pode** ser transferência para conta de acompanhamento e dividida entre categorias. Nesse caso nenhuma parte pode ser transferência ("This split transaction is already a transfer. Please remove the transfers from the sub-transactions.", `OffBudgetTransferSplitDupeError`).
 - Na espelho de uma parte, o **valor não pode ser editado** ("There is an error in the transaction values.", `AmountEditedError`, `validateTransferToSubTransactionAmountNotModified`). O mesmo vale para a espelho de uma principal dividida (`validateTransferToSplitAmountNotModified`).
 - A espelho de uma parte **não pode ser removida** (§2).
-- Editar data ou conta na espelho de uma parte muda a data ou a conta da **divisão inteira** (§2).
+- Editar data ou conta na espelho de uma parte muda a data ou a conta da **divisão inteira** (§2), pelo código. **Na tela, a data da espelho não pode ser editada** (roteiro 6D).
 - Divisão que fica com uma parte só vira transação simples (`unSplitIfNotReallyASplit`, 2331994).
 - Uma parte pode ter categoria se a conta é orçamentária e a parte não é transferência entre orçamentárias (`canSubTransactionHaveSubCategory`, 1970373).
 
@@ -381,6 +381,14 @@ Orçamento do roteiro 3 no início (Corrente 1.000, Poupança 0), 100 atribuído
 
 Isso contradiz os bloqueios lidos no código (§5). A explicação mais provável é que foram lançadas **duas transações separadas**, e não uma divisão. Com a transferência numa transação comum, editar e apagar pela outra ponta é o esperado (roteiro 3). Corrente 890 depois do 6B também aponta para isso: numa divisão de 100, o valor total não mudaria só pela ponta da Poupança. Refazer o 6A com o botão de divisão ("Split") na própria transação.
 
+**Segunda tentativa, com divisão (2026-10-13):**
+- 6A: a Corrente mostrou a linha principal "Split (Multiple Categories)…" de 100, com as partes "Mensal: Mercado" 70 e "Transfer: Poupança" 30 ("Category not needed"). Corrente 900, Poupança 30. **Conferido.**
+- 6B: na Poupança, o valor da ponta **não pode ser alterado**. **Conferido.**
+- 6C: na Poupança, a ponta **não pode ser apagada**. **Conferido.**
+- 6D: na Poupança, a **data também não pode ser mudada**. É diferente do que eu esperava pelo código: a função `Q` tem o caminho que mudaria a data da divisão inteira, mas a tela bloqueia a edição antes. Para o Tostão, vale a tela: a espelho de uma parte só muda pelo lado da divisão.
+- 6F: transação com beneficiário "Transfer : Poupança" e dividida **não é aceita**. **Conferido.**
+- Editando a divisão na Corrente, ao tirar a parte de 30, a soma das partes (70) ficou diferente do total (100). A tela abriu "Something Doesn't Add Up", com as opções "Auto-Distribute", "Update Total" e "Adjust Manually". No bundle lido só aparece o erro de soma (`validateTransactionAmountMatchesSubTransactionsAmount`); essas opções devem ser de outro chunk ou de versão mais nova. O resultado depois de salvar (a Poupança voltar a 0) ainda não foi visto.
+
 ### Roteiro 7 — agendada
 
 | Passo | Ação | Corrente | Poupança | O que olhar |
@@ -407,7 +415,7 @@ Isso contradiz os bloqueios lidos no código (§5). A explicação mais prováve
 4. **Remoção contra edição**: aceitar que uma edição atrasada ressuscite uma transferência removida, ou fazer a remoção vencer sempre no servidor? Recomendo fazer a remoção vencer.
 5. **Espelho que não está no banco local**: reproduzir o YNAB (cria outra) ou recusar o salvamento até sincronizar? Recomendo recusar e sincronizar antes.
 6. **Estado de compensação não propaga**: reproduzir? Recomendo sim, porque cada ponta é conferida contra o extrato da sua conta.
-7. **Editar a espelho de uma parte muda a data da divisão inteira**: reproduzir ou bloquear a edição de data na espelho?
+7. ~~Editar a espelho de uma parte muda a data da divisão inteira~~: resolvido pela tela (roteiro 6D). O YNAB bloqueia a edição da data na espelho; o Tostão faz o mesmo.
 
 ## 12. O que ainda não achamos
 
