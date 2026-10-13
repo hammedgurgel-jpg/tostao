@@ -608,3 +608,60 @@ fn adaptador_le_as_entidades_do_protocolo() {
     let erro = orcamento_das_entidades(&sem_mes).unwrap_err();
     assert_eq!((erro.tipo, erro.campo), ("be_monthly_subcategory_budgets", "entities_monthly_budget_id"));
 }
+
+#[test]
+fn roteiro_8_primeira_tentativa_sem_transferencia() {
+    // Conferido na tela em 2026-10-13. Os "pagamentos" da Corrente foram
+    // lançados sem beneficiário de transferência (saídas sem categoria), e o
+    // gasto do 8F ficou sem categoria. O saldo inicial ficou em 13/10.
+    const SET: u32 = 9;
+    let mut r = Roteiro::novo();
+    r.cartao("cartao");
+    r.orc.atribuicoes.push(Atribuicao { categoria: "mercado".into(), mes: dia(SET, 1), valor: 50_000 });
+
+    // 8A: 50 no Cartão, em Mercado, em 15/09.
+    let gasto_setembro = r.lanca("cartao", -50_000, Some("mercado"));
+    r.transacao(&gasto_setembro).data = dia(SET, 15);
+    let c = r.calcula();
+    assert_eq!((c.atividade(SET, "mercado"), c.disponivel(SET, "mercado")), (-50_000, 0));
+    assert_eq!((c.atividade(SET, "pagamento-cartao"), c.disponivel(SET, "pagamento-cartao")), (50_000, 50_000));
+    assert_eq!(c.a_atribuir(SET), -50_000, "You assigned more than you have");
+    assert_eq!((c.disponivel(OUT, "pagamento-cartao"), c.a_atribuir(OUT)), (50_000, 950_000));
+
+    // 8B e 8C como foram lançados: saídas de 50 e 10 na Corrente, sem categoria.
+    r.lanca("corrente", -50_000, None);
+    let c = r.calcula();
+    assert_eq!(c.mes(dia(OUT, 1)).unwrap().sem_categoria.balance, Some(-50_000));
+    assert_eq!((c.conta("corrente"), c.conta("cartao"), c.a_atribuir(OUT)), (950_000, -50_000, 950_000));
+    r.lanca("corrente", -10_000, None);
+    let c = r.calcula();
+    assert_eq!(c.mes(dia(OUT, 1)).unwrap().sem_categoria.balance, Some(-60_000));
+    assert_eq!((c.conta("corrente"), c.disponivel(OUT, "pagamento-cartao"), c.a_atribuir(OUT)), (940_000, 50_000, 950_000));
+
+    // 8D: atribui 10 a Mercado e gasta 10 no Cartão em Mercado.
+    r.atribui("mercado", 10_000);
+    let gasto = r.lanca("cartao", -10_000, Some("mercado"));
+    let c = r.calcula();
+    assert_eq!((c.atividade(OUT, "mercado"), c.disponivel(OUT, "mercado")), (-10_000, 0));
+    assert_eq!((c.atividade(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao")), (10_000, 60_000));
+    assert_eq!((c.conta("cartao"), c.a_atribuir(OUT)), (-60_000, 940_000));
+
+    // 8E: apaga o gasto e lança um estorno de 20 no Cartão em Mercado: o
+    // estorno sai da categoria de pagamento.
+    r.remove(&gasto);
+    let estorno = r.lanca("cartao", 20_000, Some("mercado"));
+    let c = r.calcula();
+    assert_eq!((c.atividade(OUT, "mercado"), c.disponivel(OUT, "mercado")), (20_000, 30_000));
+    assert_eq!((c.atividade(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao")), (-20_000, 30_000));
+    assert_eq!((c.conta("cartao"), c.a_atribuir(OUT)), (-30_000, 940_000));
+
+    // 8F como foi lançado: apaga o estorno, tira a atribuição e gasta 10 no
+    // Cartão sem categoria.
+    r.remove(&estorno);
+    r.orc.atribuicoes.retain(|a| a.mes != dia(OUT, 1));
+    r.lanca("cartao", -10_000, None);
+    let c = r.calcula();
+    assert_eq!(c.mes(dia(OUT, 1)).unwrap().sem_categoria.balance, Some(-70_000));
+    assert_eq!((c.disponivel(OUT, "mercado"), c.disponivel(OUT, "pagamento-cartao")), (0, 50_000));
+    assert_eq!((c.conta("cartao"), c.a_atribuir(OUT)), (-60_000, 950_000));
+}

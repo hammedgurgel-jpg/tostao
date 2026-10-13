@@ -425,7 +425,9 @@ Orçamento novo:
 - **Cartão** (cartão de crédito), saldo 0;
 - categoria Mercado; em **setembro**, atribui 50 a Mercado.
 
-No início: "A atribuir" de setembro, outubro e novembro = 950.
+No início: "A atribuir" de setembro, outubro e novembro = 950. Se o saldo inicial ficar com a data de hoje (13/10), setembro mostra −50 ("You assigned more than you have"); outubro e novembro não mudam.
+
+**Como lançar o pagamento** (8B e 8C): na conta Cartão, botão "Record Payment"; ou, na Corrente, beneficiário "Transfer : Cartão". Confira antes de seguir: na Corrente a linha mostra "Payment: Cartão" e "Category not needed", e na conta Cartão aparece a entrada. Se aparecer "This needs a category", não é transferência. Nos gastos do 8D e do 8F, escolha a categoria Mercado.
 Todas as transações de outubro com data de **hoje (13/10) ou antes**: data futura vira agendada (roteiro 3F). Se a tela não deixar lançar em setembro (mês antes do início do orçamento), anote e faça só os passos 8C a 8F, partindo de cartão com saldo 0. Nesse caso, os valores esperados mudam; refaço a conta.
 
 Valores esperados pela regra (calculados com o motor). "Pagamento" é a categoria de pagamento do Cartão em **outubro**: atividade / disponível. "A atribuir" é o de outubro e o de novembro.
@@ -443,6 +445,13 @@ O que anotar em cada passo:
 - "A atribuir" de **outubro e de novembro** (a tela de novembro pode ser vista sem lançar nada nele);
 - atividade e disponível da categoria de pagamento em outubro, e a cor (vermelho = estouro em dinheiro);
 - saldos da Corrente e do Cartão.
+
+**Primeira tentativa na tela (2026-10-13), a refazer.** Os "pagamentos" do 8B e do 8C ficaram como saídas da Corrente **sem beneficiário e sem categoria** ("This needs a category"), e não como transferência; a conta Cartão não recebeu nada. O gasto do 8F também ficou sem categoria. Então o +10 **não foi testado**. O que a tela mostrou bate com o motor (teste `roteiro_8_primeira_tentativa_sem_transferencia`):
+- setembro: Mercado 50 gastos no cartão, Pagamento +50 / 50, "A atribuir" −50 (saldo inicial ficou em 13/10); outubro herda 50 no Pagamento;
+- saídas sem categoria na Corrente (−50, depois −60): "A atribuir" de outubro continua 950;
+- 8D: atribuir 10 e gastar 10 no cartão em Mercado: Pagamento +10 / 60, "A atribuir" 940;
+- 8E: estorno de 20 no cartão em Mercado: Mercado +20 / 30, **Pagamento −20 / 30**, cartão −30, "A atribuir" 940. **Conferido**: o estorno coberto no cartão sai da categoria de pagamento (`budgeted_spending` positivo);
+- 8F como lançado (10 sem categoria no cartão): sem categoria −70, Pagamento 0 / 50 (amarelo), cartão −60, "A atribuir" 950.
 
 Contas de apoio:
 - No 8D, a atribuição sozinha já leva o "A atribuir" de outubro de 960 a 950; o gasto no cartão leva a 940 pela regra.
