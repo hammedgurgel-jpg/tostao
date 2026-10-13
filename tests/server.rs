@@ -119,8 +119,8 @@ impl Device {
 }
 
 fn server(schema: i64) -> Arc<Mutex<SyncServer>> {
-    let mut s = SyncServer::new(schema);
-    s.create_budget(BUDGET, "familia");
+    let mut s = SyncServer::open_in_memory(schema).unwrap();
+    s.create_budget(BUDGET, "familia").unwrap();
     Arc::new(Mutex::new(s))
 }
 
@@ -137,8 +137,8 @@ fn assignment_from_device_a_reaches_device_b() {
     assert_eq!(ka.server_knowledge_of_device, 1);
     assert_eq!(ka.device_knowledge_of_server, 1);
     assert!(!ka.has_changes_to_send());
-    assert_eq!(srv.lock().unwrap().current_server_knowledge(BUDGET), Some(1));
-    assert_eq!(srv.lock().unwrap().server_knowledge_of_device(BUDGET, "aparelho-a"), Some(1));
+    assert_eq!(srv.lock().unwrap().current_server_knowledge(BUDGET).unwrap(), Some(1));
+    assert_eq!(srv.lock().unwrap().server_knowledge_of_device(BUDGET, "aparelho-a").unwrap(), 1);
 
     let r = b.sync(SyncType::Delta).unwrap();
     assert!(r.server_had_changed_entities);
@@ -163,7 +163,7 @@ fn later_change_replaces_earlier_one() {
     a.sync(SyncType::Delta).unwrap();
 
     assert_eq!(a.get("be_monthly_subcategory_budgets", "msb-1").unwrap()["budgeted"], 650_000);
-    assert_eq!(srv.lock().unwrap().current_server_knowledge(BUDGET), Some(2));
+    assert_eq!(srv.lock().unwrap().current_server_knowledge(BUDGET).unwrap(), Some(2));
 }
 
 #[test]
@@ -182,13 +182,13 @@ fn delta_without_changes_returns_empty_lists() {
     assert_eq!(e.be_transactions, Some(vec![]));
     assert_eq!(e.be_accounts, Some(vec![]));
     assert_eq!(e.be_budget, None);
-    assert_eq!(srv.lock().unwrap().current_server_knowledge(BUDGET), Some(1));
+    assert_eq!(srv.lock().unwrap().current_server_knowledge(BUDGET).unwrap(), Some(1));
 }
 
 #[test]
 fn resending_the_same_batch_is_not_applied_twice() {
-    let mut srv = SyncServer::new(SCHEMA);
-    srv.create_budget(BUDGET, "familia");
+    let mut srv = SyncServer::open_in_memory(SCHEMA).unwrap();
+    srv.create_budget(BUDGET, "familia").unwrap();
     let request = SyncBudgetDataRequest {
         budget_version_id: BUDGET.into(),
         sync_type: SyncType::Delta,
@@ -217,8 +217,8 @@ fn schema_version_mismatch_is_rejected_by_client_and_not_applied() {
 
     let err = a.sync(SyncType::Delta).unwrap_err();
     assert!(matches!(err, SyncError::UnexpectedSchemaVersion { expected: SCHEMA, received: 43 }));
-    assert_eq!(srv.lock().unwrap().current_server_knowledge(BUDGET), Some(0));
-    assert_eq!(srv.lock().unwrap().server_knowledge_of_device(BUDGET, "aparelho-a"), Some(0));
+    assert_eq!(srv.lock().unwrap().current_server_knowledge(BUDGET).unwrap(), Some(0));
+    assert_eq!(srv.lock().unwrap().server_knowledge_of_device(BUDGET, "aparelho-a").unwrap(), 0);
     assert!(a.knowledge().has_changes_to_send(), "a mudança continua pendente no aparelho");
 }
 
@@ -254,7 +254,7 @@ fn backfill_does_not_send_pending_changes() {
     let mut a = Device::new(&srv, "familia", "aparelho-a", SCHEMA);
     a.assign("msb-1", "cat-mercado", "2026-10-01", 500_000);
     a.sync(SyncType::Backfill).unwrap();
-    assert_eq!(srv.lock().unwrap().current_server_knowledge(BUDGET), Some(0));
+    assert_eq!(srv.lock().unwrap().current_server_knowledge(BUDGET).unwrap(), Some(0));
     assert!(a.knowledge().has_changes_to_send());
 }
 
@@ -327,16 +327,56 @@ fn user_without_access_gets_permission_error() {
     assert!(r.server_had_changed_entities);
     assert_eq!(visitor.sync.host.permission_denied, 1);
 
-    srv.lock().unwrap().grant_read(BUDGET, "visita");
+    srv.lock().unwrap().grant_read(BUDGET, "visita").unwrap();
     visitor.sync(SyncType::Delta).unwrap();
     assert_eq!(visitor.sync.host.permission_denied, 1);
 }
 
 #[test]
 fn unknown_operation_is_an_error() {
-    let mut srv = SyncServer::new(SCHEMA);
+    let mut srv = SyncServer::open_in_memory(SCHEMA).unwrap();
     let err = srv
         .handle_catalog("familia", "aparelho-a", &CatalogRequest { operation_name: "loginUser".into(), request_data: "{}".into() })
         .unwrap_err();
     assert_eq!(err.id, tostao::server::ERR_UNKNOWN_OPERATION);
+}
+
+#[test]
+fn budget_survives_reopening_the_database_file() {
+    let path = std::env::temp_dir().join(format!("tostao-teste-{}.db", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    {
+        let mut s = SyncServer::open(&path, SCHEMA).unwrap();
+        s.create_budget(BUDGET, "familia").unwrap();
+        let srv = Arc::new(Mutex::new(s));
+        let mut a = Device::new(&srv, "familia", "aparelho-a", SCHEMA);
+        a.assign("msb-1", "cat-mercado", "2026-10-01", 500_000);
+        a.sync(SyncType::Delta).unwrap();
+    }
+
+    let srv = Arc::new(Mutex::new(SyncServer::open(&path, SCHEMA).unwrap()));
+    assert_eq!(srv.lock().unwrap().current_server_knowledge(BUDGET).unwrap(), Some(1));
+    assert_eq!(srv.lock().unwrap().server_knowledge_of_device(BUDGET, "aparelho-a").unwrap(), 1);
+    let mut b = Device::new(&srv, "familia", "aparelho-b", SCHEMA);
+    b.sync(SyncType::Delta).unwrap();
+    assert_eq!(b.get("be_monthly_subcategory_budgets", "msb-1").unwrap()["budgeted"], 500_000);
+
+    drop(b);
+    drop(srv);
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn batch_with_entity_without_id_is_rejected_whole() {
+    let srv = server(SCHEMA);
+    let mut a = Device::new(&srv, "familia", "aparelho-a", SCHEMA);
+    a.assign("msb-1", "cat-mercado", "2026-10-01", 500_000);
+    a.change("be_accounts", json!({"id": "conta-1"}));
+    a.sync.host.entities.get_mut("be_accounts").unwrap().get_mut("conta-1").unwrap().0 = json!({"account_name": "sem id"});
+
+    let err = a.sync(SyncType::Delta).unwrap_err();
+    let SyncError::Api(ApiError::Server(e)) = err else { panic!("esperava erro do servidor: {err:?}") };
+    assert_eq!(e.id, tostao::server::ERR_INVALID_REQUEST);
+    assert_eq!(srv.lock().unwrap().current_server_knowledge(BUDGET).unwrap(), Some(0));
+    assert_eq!(srv.lock().unwrap().server_knowledge_of_device(BUDGET, "aparelho-a").unwrap(), 0);
 }

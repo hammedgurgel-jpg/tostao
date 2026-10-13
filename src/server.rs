@@ -1,16 +1,20 @@
-//! Lado servidor de `syncBudgetData`, com armazenamento em memória.
+//! Lado servidor de `syncBudgetData`, guardado num banco SQLite.
 //!
 //! Cada orçamento tem um contador de conhecimento do servidor que sobe uma
 //! vez por lote de mudanças aceito; cada entidade guarda o valor do contador
 //! em que mudou pela última vez. Um aparelho recebe as entidades com
 //! conhecimento maior do que o `device_knowledge_of_server` que ele enviou.
+//! Cada sincronização roda numa transação do banco: ou o lote todo entra,
+//! ou nada entra.
 //!
-//! Entidades são `serde_json::Value` com um campo `id` texto; a última
+//! Entidades são guardadas como texto JSON com um campo `id` texto; a última
 //! versão recebida substitui a anterior inteira.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt::Display;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::{json, Map, Value};
 
 use crate::api::{ApiError, HttpResponse, ServerError, Transport};
@@ -22,6 +26,34 @@ use crate::sync::{ERR_NO_READ_PERMISSIONS, ERR_SERVER_KNOWLEDGE_OF_DEVICE_EXCEED
 
 pub const ERR_INVALID_REQUEST: &str = "invalid_request";
 pub const ERR_UNKNOWN_OPERATION: &str = "unknown_operation";
+pub const ERR_INTERNAL: &str = "internal_error";
+
+const SCHEMA_SQL: &str = "
+CREATE TABLE IF NOT EXISTS budgets (
+    id                       TEXT PRIMARY KEY,
+    current_server_knowledge INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS budget_readers (
+    budget_id TEXT NOT NULL REFERENCES budgets(id),
+    user      TEXT NOT NULL,
+    PRIMARY KEY (budget_id, user)
+);
+CREATE TABLE IF NOT EXISTS device_knowledge (
+    budget_id                  TEXT NOT NULL REFERENCES budgets(id),
+    device_id                  TEXT NOT NULL,
+    server_knowledge_of_device INTEGER NOT NULL,
+    PRIMARY KEY (budget_id, device_id)
+);
+CREATE TABLE IF NOT EXISTS entities (
+    budget_id        TEXT NOT NULL REFERENCES budgets(id),
+    kind             TEXT NOT NULL,
+    id               TEXT NOT NULL,
+    value            TEXT NOT NULL,
+    server_knowledge INTEGER NOT NULL,
+    PRIMARY KEY (budget_id, kind, id)
+);
+CREATE INDEX IF NOT EXISTS entities_by_knowledge ON entities (budget_id, server_knowledge);
+";
 
 /// Tipos que vão e voltam com o mesmo nome e são listas.
 const LIST_KINDS: &[&str] = &[
@@ -73,83 +105,60 @@ const GROUP_KINDS: &[GroupKind] = &[
     },
 ];
 
-#[derive(Debug, Clone)]
-struct StoredEntity {
-    value: Value,
-    server_knowledge: i64,
-}
-
-#[derive(Debug, Default)]
-struct BudgetStore {
-    readers: HashSet<String>,
-    current_server_knowledge: i64,
-    /// Até onde o servidor recebeu as mudanças de cada aparelho.
-    knowledge_of_devices: HashMap<String, i64>,
-    /// tipo -> id -> entidade
-    entities: BTreeMap<&'static str, BTreeMap<String, StoredEntity>>,
-}
-
-impl BudgetStore {
-    fn changed_since(&self, since: i64) -> Map<String, Value> {
-        let mut out = Map::new();
-        for kind in LIST_KINDS
-            .iter()
-            .chain(GROUP_KINDS.iter().flat_map(|g| [&g.parent_kind, &g.children_kind]))
-        {
-            out.insert((*kind).to_owned(), Value::Array(self.entities_since(kind, since)));
-        }
-        for kind in SINGLE_KINDS {
-            if let Some(last) = self.entities_since(kind, since).pop() {
-                out.insert((*kind).to_owned(), last);
-            }
-        }
-        out
-    }
-
-    /// Entidades do tipo que mudaram depois de `since`, na ordem em que mudaram.
-    fn entities_since(&self, kind: &str, since: i64) -> Vec<Value> {
-        let Some(by_id) = self.entities.get(kind) else { return Vec::new() };
-        let mut changed: Vec<_> = by_id.values().filter(|e| e.server_knowledge > since).collect();
-        changed.sort_by_key(|e| e.server_knowledge);
-        changed.into_iter().map(|e| e.value.clone()).collect()
-    }
-}
-
-/// Servidor de sincronização de orçamentos, todo em memória.
+/// Servidor de sincronização de orçamentos.
 #[derive(Debug)]
 pub struct SyncServer {
     schema_version: i64,
-    budgets: HashMap<String, BudgetStore>,
+    conn: Connection,
 }
 
 impl SyncServer {
-    pub fn new(schema_version: i64) -> Self {
-        Self { schema_version, budgets: HashMap::new() }
+    /// Abre (ou cria) o banco no arquivo `path`.
+    pub fn open(path: impl AsRef<Path>, schema_version: i64) -> rusqlite::Result<Self> {
+        Self::with_connection(Connection::open(path)?, schema_version)
+    }
+
+    /// Banco só em memória, que some quando o servidor é descartado.
+    pub fn open_in_memory(schema_version: i64) -> rusqlite::Result<Self> {
+        Self::with_connection(Connection::open_in_memory()?, schema_version)
+    }
+
+    fn with_connection(conn: Connection, schema_version: i64) -> rusqlite::Result<Self> {
+        conn.pragma_update(None, "foreign_keys", true)?;
+        conn.execute_batch(SCHEMA_SQL)?;
+        Ok(Self { schema_version, conn })
     }
 
     pub fn schema_version(&self) -> i64 {
         self.schema_version
     }
 
-    /// Cria um orçamento vazio que `owner` pode ler.
-    pub fn create_budget(&mut self, budget_version_id: &str, owner: &str) {
-        let budget = self.budgets.entry(budget_version_id.to_owned()).or_default();
-        budget.readers.insert(owner.to_owned());
+    /// Cria um orçamento vazio (se ainda não existir) que `owner` pode ler.
+    pub fn create_budget(&mut self, budget_version_id: &str, owner: &str) -> rusqlite::Result<()> {
+        self.conn.execute("INSERT OR IGNORE INTO budgets (id) VALUES (?1)", [budget_version_id])?;
+        self.grant_read(budget_version_id, owner)
     }
 
-    pub fn grant_read(&mut self, budget_version_id: &str, user: &str) {
-        if let Some(budget) = self.budgets.get_mut(budget_version_id) {
-            budget.readers.insert(user.to_owned());
-        }
+    pub fn grant_read(&mut self, budget_version_id: &str, user: &str) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO budget_readers (budget_id, user) VALUES (?1, ?2)",
+            [budget_version_id, user],
+        )?;
+        Ok(())
     }
 
-    pub fn current_server_knowledge(&self, budget_version_id: &str) -> Option<i64> {
-        self.budgets.get(budget_version_id).map(|b| b.current_server_knowledge)
+    pub fn current_server_knowledge(&self, budget_version_id: &str) -> rusqlite::Result<Option<i64>> {
+        self.conn
+            .query_row(
+                "SELECT current_server_knowledge FROM budgets WHERE id = ?1",
+                [budget_version_id],
+                |row| row.get(0),
+            )
+            .optional()
     }
 
-    pub fn server_knowledge_of_device(&self, budget_version_id: &str, device_id: &str) -> Option<i64> {
-        let budget = self.budgets.get(budget_version_id)?;
-        Some(budget.knowledge_of_devices.get(device_id).copied().unwrap_or(0))
+    pub fn server_knowledge_of_device(&self, budget_version_id: &str, device_id: &str) -> rusqlite::Result<i64> {
+        knowledge_of_device(&self.conn, budget_version_id, device_id)
     }
 
     /// Recebe as mudanças do aparelho e devolve o que ele ainda não viu.
@@ -171,13 +180,23 @@ impl SyncServer {
         device_id: &str,
         request: &SyncBudgetDataRequest,
     ) -> Result<SyncBudgetDataResponse, ServerError> {
-        let budget = self
-            .budgets
-            .get_mut(&request.budget_version_id)
-            .filter(|b| b.readers.contains(user))
+        let budget_id = request.budget_version_id.as_str();
+        let schema_matches = request.schema_version == self.schema_version;
+        let tx = self.conn.transaction().map_err(internal)?;
+
+        let mut current: i64 = tx
+            .query_row(
+                "SELECT b.current_server_knowledge FROM budgets b
+                 JOIN budget_readers r ON r.budget_id = b.id
+                 WHERE b.id = ?1 AND r.user = ?2",
+                [budget_id, user],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(internal)?
             .ok_or_else(|| ServerError { status_code: 403, id: ERR_NO_READ_PERMISSIONS.into(), data: None })?;
 
-        let known = budget.knowledge_of_devices.get(device_id).copied().unwrap_or(0);
+        let mut known = knowledge_of_device(&tx, budget_id, device_id).map_err(internal)?;
         if request.ending_device_knowledge > 0 && known > request.ending_device_knowledge {
             return Err(ServerError {
                 status_code: 409,
@@ -186,21 +205,33 @@ impl SyncServer {
             });
         }
 
-        let schema_matches = request.schema_version == self.schema_version;
         if schema_matches && request.ending_device_knowledge > known {
             let incoming = flatten_changed_entities(request)?;
             if !incoming.is_empty() {
-                budget.current_server_knowledge += 1;
-                let server_knowledge = budget.current_server_knowledge;
+                current += 1;
+                tx.execute("UPDATE budgets SET current_server_knowledge = ?2 WHERE id = ?1", params![budget_id, current])
+                    .map_err(internal)?;
+                let mut upsert = tx
+                    .prepare(
+                        "INSERT INTO entities (budget_id, kind, id, value, server_knowledge)
+                         VALUES (?1, ?2, ?3, ?4, ?5)
+                         ON CONFLICT (budget_id, kind, id)
+                         DO UPDATE SET value = excluded.value, server_knowledge = excluded.server_knowledge",
+                    )
+                    .map_err(internal)?;
                 for (kind, id, value) in incoming {
-                    budget
-                        .entities
-                        .entry(kind)
-                        .or_default()
-                        .insert(id, StoredEntity { value, server_knowledge });
+                    upsert.execute(params![budget_id, kind, id, value.to_string(), current]).map_err(internal)?;
                 }
             }
-            budget.knowledge_of_devices.insert(device_id.to_owned(), request.ending_device_knowledge);
+            known = request.ending_device_knowledge;
+            tx.execute(
+                "INSERT INTO device_knowledge (budget_id, device_id, server_knowledge_of_device)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT (budget_id, device_id)
+                 DO UPDATE SET server_knowledge_of_device = excluded.server_knowledge_of_device",
+                params![budget_id, device_id, known],
+            )
+            .map_err(internal)?;
         }
 
         let changed_entities = if schema_matches {
@@ -208,19 +239,19 @@ impl SyncServer {
                 SyncType::Backfill => 0,
                 SyncType::Bootstrap | SyncType::Delta => request.device_knowledge_of_server,
             };
-            serde_json::from_value::<IncomingChangedEntities>(Value::Object(budget.changed_since(since)))
-                .map_err(|e| invalid_request(&e.to_string()))?
+            changed_since(&tx, budget_id, since)?
         } else {
             IncomingChangedEntities::default()
         };
+        tx.commit().map_err(internal)?;
 
         Ok(SyncBudgetDataResponse {
             changed_entities,
-            current_server_knowledge: budget.current_server_knowledge,
+            current_server_knowledge: current,
             error: None,
             schema_version_of_response: self.schema_version,
             schema_version_of_server: self.schema_version,
-            server_knowledge_of_device: budget.knowledge_of_devices.get(device_id).copied().unwrap_or(0),
+            server_knowledge_of_device: known,
         })
     }
 
@@ -238,7 +269,7 @@ impl SyncServer {
                 let response = self.sync_budget_data(user, device_id, &sync)?;
                 Ok(HttpResponse {
                     headers: vec![(SERVER_VERSION_HEADER.to_owned(), env!("CARGO_PKG_VERSION").to_owned())],
-                    data: serde_json::to_value(response).map_err(|e| invalid_request(&e.to_string()))?,
+                    data: serde_json::to_value(response).map_err(internal)?,
                 })
             }
             other => Err(ServerError {
@@ -248,6 +279,55 @@ impl SyncServer {
             }),
         }
     }
+}
+
+fn knowledge_of_device(conn: &Connection, budget_id: &str, device_id: &str) -> rusqlite::Result<i64> {
+    Ok(conn
+        .query_row(
+            "SELECT server_knowledge_of_device FROM device_knowledge WHERE budget_id = ?1 AND device_id = ?2",
+            [budget_id, device_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .unwrap_or(0))
+}
+
+/// Entidades que mudaram depois de `since`, na ordem em que mudaram. Toda
+/// lista vem presente, vazia se nada mudou.
+fn changed_since(conn: &Connection, budget_id: &str, since: i64) -> Result<IncomingChangedEntities, ServerError> {
+    let mut out = Map::new();
+    for kind in LIST_KINDS
+        .iter()
+        .chain(GROUP_KINDS.iter().flat_map(|g| [&g.parent_kind, &g.children_kind]))
+    {
+        out.insert((*kind).to_owned(), Value::Array(Vec::new()));
+    }
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT kind, value FROM entities
+             WHERE budget_id = ?1 AND server_knowledge > ?2
+             ORDER BY server_knowledge, kind, id",
+        )
+        .map_err(internal)?;
+    let rows = stmt
+        .query_map(params![budget_id, since], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .map_err(internal)?;
+    for row in rows {
+        let (kind, text) = row.map_err(internal)?;
+        let value: Value = serde_json::from_str(&text).map_err(internal)?;
+        match out.get_mut(&kind) {
+            Some(Value::Array(list)) => list.push(value),
+            _ => {
+                out.insert(kind, value);
+            }
+        }
+    }
+    serde_json::from_value(Value::Object(out)).map_err(internal)
+}
+
+fn internal(error: impl Display) -> ServerError {
+    ServerError { status_code: 500, id: ERR_INTERNAL.into(), data: Some(json!({ "message": error.to_string() })) }
 }
 
 fn invalid_request(message: &str) -> ServerError {
