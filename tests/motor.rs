@@ -718,3 +718,36 @@ fn roteiro_8e_estorno_com_cartao_sem_divida() {
     assert_eq!((c.conta("cartao"), c.a_atribuir(OUT)), (20_000, 940_000));
     assert_eq!((c.atividade(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao")), (0, 0));
 }
+
+#[test]
+fn roteiro_8_pagamento_alem_da_divida_do_mes_anterior() {
+    // Terceira tentativa do roteiro 8, conferida na tela em 2026-10-13.
+    let mut r = Roteiro::novo();
+    r.cartao("cartao");
+    r.orc.atribuicoes.push(Atribuicao { categoria: "mercado".into(), mes: dia(9, 1), valor: 50_000 });
+    let gasto_setembro = r.lanca("cartao", -50_000, Some("mercado"));
+    r.transacao(&gasto_setembro).data = dia(9, 15);
+
+    // Passo 0.
+    let c = r.calcula();
+    assert_eq!((c.conta("corrente"), c.conta("cartao")), (1_000_000, -50_000));
+    assert_eq!((c.atividade(9, "pagamento-cartao"), c.disponivel(9, "pagamento-cartao"), c.a_atribuir(9)), (50_000, 50_000, -50_000));
+    assert_eq!((c.atividade(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao")), (0, 50_000));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (950_000, 950_000));
+
+    // 8B: paga os 50 da dívida de setembro: não vai para o A atribuir.
+    r.transfere("corrente", "cartao", 50_000, None);
+    let c = r.calcula();
+    assert_eq!((c.conta("corrente"), c.conta("cartao")), (950_000, 0));
+    assert_eq!((c.atividade(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao")), (-50_000, 0));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (950_000, 950_000));
+
+    // 8C: paga 10 além da dívida: +10 no A atribuir de outubro.
+    r.transfere("corrente", "cartao", 10_000, None);
+    let c = r.calcula();
+    assert_eq!((c.conta("corrente"), c.conta("cartao")), (940_000, 10_000));
+    assert_eq!((c.atividade(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao")), (-60_000, -10_000));
+    assert_eq!(c.cat(OUT, "pagamento-cartao").cash_overspent(), -10_000, "vermelho");
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (960_000, 950_000));
+    assert_eq!((c.disponivel(NOV, "pagamento-cartao"), c.a_atribuir(9)), (0, -50_000));
+}
