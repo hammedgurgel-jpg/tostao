@@ -201,6 +201,15 @@ Totais usados na tela (80211):
 
 ## 8. O que falta e próximos alvos
 
+Já implementado no Tostão (2026-10-13), com testes em `tests/goals.rs` e `tests/calc.rs`:
+- **Metas** (seção 4), em `src/goals.rs`. Os totais de falta também, sem a parte do painel do cartão.
+- **Estouro** por categoria e do mês (seção 2), em `src/calc.rs`.
+  - O estouro do mês usa a regra provável.
+- **Saldo da categoria de pagamento do cartão** (seção 3, proposta), em `src/calc.rs`.
+  - Quando uma categoria usa vários cartões, a parte coberta é dividida entre eles na proporção do gasto. Essa regra é nossa.
+- **Datas** com as regras do moment.js, em `src/dates.rs`.
+- Diferença conhecida: na meta semanal com frequência > 1, o YNAB pode chegar a frações de milésimo; o Tostão arredonda.
+
 Ainda não achamos:
 
 1. a fórmula do `overSpent` do mês (provável regra acima);

@@ -17,6 +17,8 @@
 
 pub mod api;
 pub mod calc;
+pub mod dates;
+pub mod goals;
 pub mod knowledge;
 pub mod protocol;
 pub mod server;
