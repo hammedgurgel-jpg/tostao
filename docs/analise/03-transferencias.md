@@ -260,7 +260,7 @@ O servidor do Tostão guarda a **última versão inteira** de cada entidade e ap
 | Tema | Regra | Confiança |
 |---|---|---|
 | Modelo | Duas transações, cada uma com o id da outra; parte de divisão ↔ transação inteira | visto |
-| Modelo | Agendada guarda uma ponta só; a outra é desenhada só em "All Accounts" | visto + conferido na tela |
+| Modelo | Agendada guarda uma ponta só; a outra é desenhada na tela (na outra conta e em "All Accounts") | visto + conferido na tela |
 | Modelo | Beneficiário "Transfer : conta" define a transferência | visto |
 | Modelo | Beneficiário de transferência criado com a conta | inferido (não achado no web) |
 | Criação | Espelho: −valor, mesma data e memo, não compensada, aceite igual | visto |
@@ -310,7 +310,7 @@ Nenhuma categoria muda em nenhum passo.
 - 3B: a ponta da Poupança ficou com 250 e memo "reserva 2", categoria "Category not needed". A Corrente foi para 750 e o "A atribuir" continuou 1.000. **Conferido**: valor e memo propagam da espelho para a origem.
 - 3C: a ponta da Poupança ficou compensada (saldo compensado da Poupança 250). Na Corrente, a ponta continuou **não compensada** (compensado 1.000, não compensado −250). **Conferido**: o estado de compensação não propaga.
 - 3D, feito com data **futura** (de 13/10 para 18/10): a transação da Corrente virou **agendada** (250, "Transfer: Poupança", memo "reserva 2", "Category not needed"). A ponta da Poupança sumiu, e a Corrente voltou a 1.000 e a Poupança a 0. **Conferido**: é a conversão em agendada da §2 (`convertToScheduledTransaction`), que remove a espelho. O roteiro foi corrigido para usar data passada no 3D, e o caso futuro virou o 3F.
-- A espelho desenhada da agendada (§6) **não aparece** na tela da conta Poupança, mas **aparece em "All Accounts"**: Poupança, 18/10, entrada de 250, "Transfer: Conta Corrente", memo "reserva 2", "Category not needed". **Conferido.** Bate com o código, que a desenha só na lista de todas as contas (2920700).
+- A espelho desenhada da agendada (§6) **não aparece** na tela da conta Poupança, mas **aparece em "All Accounts"**: Poupança, 18/10, entrada de 250, "Transfer: Conta Corrente", memo "reserva 2", "Category not needed". **Conferido.** Bate com o código, que a desenha só na lista de todas as contas (2920700). **Corrigido no roteiro 7:** lá a espelho apareceu também na tela da conta Poupança. No roteiro 3, talvez faltasse recarregar a tela.
 - 3D (refeito com transferência nova, data passada): mudar a data da ponta da Corrente para 10/10 levou a ponta da Poupança para 10/10. A ponta da Poupança continuou compensada. **Conferido.**
 - 3E: apagar a ponta da Poupança apagou a da Corrente. **Conferido** (relato do usuário, sem captura).
 
@@ -397,6 +397,12 @@ Isso contradiz os bloqueios lidos no código (§5). A explicação mais prováve
 | 7B | Na Poupança, abre essa agendada e muda o memo | 1.000 | 0 | O memo muda na agendada da Corrente (só existe uma). |
 | 7C | Na Corrente, "Enter now" (lançar agora) na agendada | 950 | 50 | As duas pontas nascem; a da Poupança não compensada. |
 | 7D | Se alguma ponta vier "a aprovar", aprova só uma | 950 | 50 | A outra também fica aprovada. |
+
+**Conferência na tela (2026-10-13), roteiro 7** (agendada mensal de 50 com data 14/10, um dia depois de hoje):
+- 7A: na Corrente, a agendada "Transfer: Poupança" de 50 e "Category not needed". A Corrente continuou em 1.000 e o "A atribuir" em 900 (100 em Mercado). Em "All Accounts" e **na tela da Poupança** apareceu a espelho: 14/10, entrada de 50, "Transfer: Conta Corrente", com o botão "Enter Now". **Conferido.**
+- 7B: o memo "oi", digitado na espelho da Poupança, apareceu na agendada da Corrente. **Conferido**: editar a espelho desenhada edita a agendada real.
+- 7C: "Enter Now" criou as duas pontas com a **data de hoje (13/10)**, não a da ocorrência (14/10), com memo "oi" e não compensadas. Corrente 950, Poupança 50. A agendada andou para 14/11, e a espelho de 14/11 aparece na Poupança. **Conferido** (`fireOnceWithTodaysDate`).
+- 7D: as pontas do "Enter Now" já vieram aprovadas, então não houve o que aprovar. A regra "aprovar uma aprova a outra" fica só **vista** no código. Para conferir, seria preciso uma geração automática (esperar a data).
 
 ## 10. Implicações para o Tostão
 
