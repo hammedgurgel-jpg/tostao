@@ -16,4 +16,5 @@ pub mod api;
 pub mod calc;
 pub mod knowledge;
 pub mod protocol;
+pub mod server;
 pub mod sync;
