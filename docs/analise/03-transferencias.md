@@ -446,7 +446,7 @@ O que anotar em cada passo:
 
 Contas de apoio:
 - No 8D, a atribuição sozinha já leva o "A atribuir" de outubro de 960 a 950; o gasto no cartão leva a 940 pela regra.
-- Novembro (950 ou 940) não depende da regra: o acréscimo de outubro é compensado pelo estouro em dinheiro da categoria de pagamento, como no roteiro 5. Se novembro bater e outubro não, a virada está certa e só a regra do mês está errada.
+- Novembro = "A atribuir" de outubro + estouro em dinheiro de outubro (o disponível negativo, em vermelho, da categoria de pagamento). Ex.: 8C, 960 − 10 = 950. Pelas alternativas, novembro muda junto com outubro; se outubro bater e novembro não, o erro está na virada, não na regra.
 - Se algum valor de outubro não bater com nenhuma coluna, anote o valor: a regra inferida e as três alternativas estão erradas, e o número ajuda a achar a certa.
 
 ## 10. Implicações para o Tostão
