@@ -12,7 +12,8 @@
 //! - o nome do cabeçalho que leva `apiVersionHeader = "2026-01-01"`;
 //! - o modo de arredondamento de `roundMilliDollars` (passado por quem chama);
 //! - a ordem dos campos nas respostas do servidor;
-//! - como `overSpent` do mês é calculado.
+//! - como `overSpent` do mês é calculado (no YNAB é o servidor que calcula;
+//!   regra provável em `docs/analise/01-estouro-cartao-metas.md`).
 
 pub mod api;
 pub mod calc;

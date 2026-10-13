@@ -30,6 +30,10 @@ _Evite_: período, competência
 Uma entrada ou saída de dinheiro numa conta, numa data, com valor, beneficiário e categoria. Saídas são valores negativos.
 _Evite_: lançamento, movimento
 
+**Transação agendada**:
+Uma transação que se repete numa frequência (semanal, mensal, anual…) e gera transações nas próximas datas. As que vencem no mês contam como transações futuras nas metas.
+_Evite_: recorrente, lançamento futuro
+
 **Subtransação**:
 Uma parte de uma transação dividida entre várias categorias; as partes somam o valor da transação.
 _Evite_: rateio, split
@@ -53,8 +57,28 @@ Quanto resta numa categoria no fim de um mês: o saldo positivo do mês anterior
 _Evite_: disponível da categoria, sobra
 
 **Estouro**:
-Saldo negativo de uma categoria num mês: gastou-se mais do que havia. A parte paga com dinheiro (não crédito) é descontada do disponível do mês seguinte, e não da categoria. Como o estouro no cartão de crédito vira dívida ainda não foi definido.
+Saldo negativo de uma categoria num mês: gastou-se mais do que havia. Divide-se em estouro em dinheiro e estouro no crédito.
 _Evite_: déficit, negativo
+
+**Estouro em dinheiro**:
+A parte do estouro paga com contas de dinheiro (corrente, poupança, espécie). É descontada do disponível do mês seguinte, e não da categoria.
+_Evite_: estouro de caixa
+
+**Estouro no crédito**:
+A parte do estouro paga com cartão de crédito sem dinheiro reservado. Não mexe no disponível: vira dívida no cartão, que a categoria de pagamento do cartão mostra como falta.
+_Evite_: dívida nova
+
+**Categoria de pagamento do cartão**:
+Categoria criada para cada conta de cartão de crédito, onde se junta o dinheiro para pagar a fatura. Gastos no cartão cobertos por outra categoria passam para ela, e os pagamentos da fatura saem dela.
+_Evite_: categoria do cartão, fatura
+
+**Meta**:
+O quanto se pretende ter ou atribuir numa categoria, de um destes tipos: valor mensal, saldo alvo, saldo alvo até a data, necessário para gastar (por período, com repetição) e pagamento de dívida. Dela saem, a cada mês, quanto atribuir, quanto ainda falta e o percentual cumprido.
+_Evite_: objetivo, target, alvo (alvo é só o valor da meta)
+
+**Meta adiada**:
+Meta que a família pediu para ignorar num mês; não conta como falta.
+_Evite_: meta pausada, snooze
 
 **Disponível do mês**:
 Dinheiro ainda sem atribuição em um mês: o disponível do mês anterior, mais o estouro do mês anterior (negativo), mais a receita do mês, menos as atribuições do mês. Pode ficar negativo quando se atribui mais do que se tem.
