@@ -234,7 +234,9 @@ O servidor do Tostão guarda a **última versão inteira** de cada entidade e ap
 | A edita só o estado de compensação de X; B edita Y | Y vem de B (estado de B); X vem de B, que regravou X com o estado antigo | sim, perde o estado de A |
 | A remove X (remove Y junto); B edita Y depois, sem ter recebido a remoção | B manda X e Y sem a marca de removida: **a transferência volta** | sim, mas "ressuscita" |
 | A troca o destino (Y vai para o Cartão); B edita Y ainda na Poupança | B manda Y na Poupança e X apontando para a Poupança: **a troca de destino se perde** | sim |
-| B tem X mas não tem Y no banco local | o cliente cria uma Y nova com outro id (§2); o servidor fica com **duas espelhos** | **não**: a Y antiga continua apontando para X |
+| B tem X mas não tem Y no banco local | o cliente cria uma Y nova com outro id (§2); o servidor fica com **duas espelhos** | **não**: a Y antiga continua apontando para X. No Tostão, recusado (decisão 5) |
+
+Com as decisões da §11, no Tostão: a linha "A remove X" não ressuscita (decisão 4). As outras linhas continuam perdendo edições concorrentes, porque a última versão inteira vence (decisão 3).
 
 - O `src/sync.rs` ignora a resposta de uma sincronização incremental se houve mudança local durante a requisição ("Incoming changes from delta sync were ignored…"). Isso não quebra o par, porque a próxima sincronização traz as duas pontas juntas.
 - As duas pontas de um mesmo envio recebem o mesmo conhecimento do servidor, então `changed_since` as devolve juntas aos outros aparelhos. Isso já vale hoje no `src/server.rs`.
@@ -243,8 +245,8 @@ O servidor do Tostão guarda a **última versão inteira** de cada entidade e ap
 
 1. **Lote atômico** (já faz): as duas pontas entram juntas ou nenhuma.
 2. **Entregar as pontas juntas** (já faz): mesmo conhecimento para tudo o que veio no mesmo lote.
-3. **Beneficiário de transferência por conta**: criar na criação da conta e renomear com ela, se o servidor for o dono disso (o bundle web não cria; ver decisões).
-4. **Invariantes do par**, se decidirmos validar (ver decisões):
+3. **Beneficiário de transferência por conta**: o aparelho manda a conta e o beneficiário no mesmo lote (decisão 2). O servidor não cria nada; só exige, na validação do par, que o beneficiário da outra conta esteja no lote.
+4. **Invariantes do par**, recusados no lote inteiro se quebrados (decisão 1):
    - X aponta para Y ⇔ Y aponta de volta para X (por `transfer_transaction_id` ou `transfer_subtransaction_id`);
    - valores opostos; mesma data; conta de cada ponta = conta de transferência da outra;
    - beneficiário de cada ponta = beneficiário de transferência da conta da outra;
@@ -254,6 +256,9 @@ O servidor do Tostão guarda a **última versão inteira** de cada entidade e ap
    - ignorar transferências entre orçamentárias na receita e nas categorias;
    - contar as entradas no cartão vindas de conta orçamentária como pagamentos (saída da categoria de pagamento);
    - tratar a ponta orçamentária de uma transferência para acompanhamento como transação comum.
+6. **Remoção vence** (decisão 4): o servidor guarda a marca de removida e recusa a regravação de uma versão não removida que chegue depois, quando o aparelho não conhecia a remoção.
+7. **Última versão inteira vence** (decisão 3): sem mesclagem por campo. Uma edição concorrente em outro campo pode apagar a do outro aparelho; o servidor não tenta juntar.
+8. **Espelho ausente** (decisão 5): o aparelho não salva uma ponta cuja espelho não está no banco local, então o servidor só recebe pares completos.
 
 ## 8. Resumo das regras
 
@@ -407,20 +412,22 @@ Isso contradiz os bloqueios lidos no código (§5). A explicação mais prováve
 ## 10. Implicações para o Tostão
 
 - **Modelo**: manter o do YNAB (duas transações com id cruzado; parte de divisão ↔ transação inteira; agendada com uma ponta só). Ele já passa pelo protocolo sem mudança e o `src/server.rs` guarda tudo sem conhecer transferências.
-- **Núcleo compartilhado**: precisamos de uma função "salvar transação" que faça o papel da `Q` (criar, propagar, mover, remover a espelho). Ela é do aparelho, não do servidor, para funcionar offline.
+- **Núcleo compartilhado**: precisamos de uma função "salvar transação" que faça o papel da `Q` (criar, propagar, mover, remover a espelho), e que crie o beneficiário de transferência junto com a conta (decisão 2). Ela é do aparelho, não do servidor, para funcionar offline. Ela recusa salvar uma ponta cuja espelho não está no banco local (decisão 5) e não copia o estado de compensação (decisão 6).
 - **Cálculo** (`src/calc.rs`): hoje recebe somas prontas. Falta a etapa que classifica cada transação: transferência entre orçamentárias (fora da receita e das categorias), pagamento de cartão (saída da categoria de pagamento), transferência com acompanhamento (transação comum com categoria).
 - **Ids determinísticos** das pontas geradas pela agendada (`{ag}_t_{data}`): reproduzir, pelo mesmo motivo da análise 02 (evitar duplicata entre aparelhos).
-- **Sincronização**: o modelo "última versão inteira vence" preserva a coerência do par quando o aparelho manda as duas pontas juntas, mas perde edições e pode ressuscitar transferências removidas. O caso perigoso é o aparelho criar uma espelho nova por não ter a antiga no banco local.
-- **Testes** antes de implementar (em `tests/`): criação, edição de cada campo da tabela da §2, troca de destino, remoção pelos dois lados, divisão, agendada com ids, e dois aparelhos editando pontas diferentes contra o `SyncServer` em memória.
+- **Sincronização** (decisões 1, 3, 4 e 5): fica "última versão inteira vence", com a remoção vencendo. O aparelho manda as duas pontas juntas e o servidor recusa o lote que deixa o par quebrado. Edições concorrentes em campos diferentes ainda se perdem; é o custo aceito pela família. O caso perigoso de antes (criar espelho nova por não ter a antiga) é recusado no aparelho.
+- **Testes** antes de implementar (em `tests/`): criação, edição de cada campo da tabela da §2, troca de destino, remoção pelos dois lados, divisão, agendada com ids, dois aparelhos editando pontas diferentes contra o `SyncServer` em memória, e também: lote que quebra o par é recusado inteiro (decisão 1), remoção vence edição atrasada (decisão 4), salvar ponta sem espelho local é recusado (decisão 5) e compensação não propaga (decisão 6).
 
-## 11. Decisões para você
+## 11. Decisões
 
-1. **O servidor valida o par?** Opções: (a) confiar no aparelho, como o YNAB parece fazer; (b) recusar o lote que quebra os invariantes da §7; (c) consertar sozinho (criar ou remover a espelho). Eu recomendaria (b): é simples, evita estado ruim e o aparelho pode tentar de novo.
-2. **Quem cria o beneficiário de transferência** de cada conta: o aparelho (junto com a conta, no mesmo lote) ou o servidor? Recomendo o aparelho, porque o servidor do Tostão hoje não cria entidades, só guarda.
-3. **Conflitos de edição**: manter "última versão inteira vence" ou mesclar por campo? Por campo evitaria perder o memo e o estado, mas é bem mais trabalho. Para uso da família, dá para começar com a versão inteira.
-4. **Remoção contra edição**: aceitar que uma edição atrasada ressuscite uma transferência removida, ou fazer a remoção vencer sempre no servidor? Recomendo fazer a remoção vencer.
-5. **Espelho que não está no banco local**: reproduzir o YNAB (cria outra) ou recusar o salvamento até sincronizar? Recomendo recusar e sincronizar antes.
-6. **Estado de compensação não propaga**: reproduzir? Recomendo sim, porque cada ponta é conferida contra o extrato da sua conta.
+Fechadas com o usuário em 2026-10-13. Nenhuma ficou adiada.
+
+1. ~~**O servidor valida o par?**~~ **Decidido (b): o servidor recusa o lote que quebra os invariantes da §7.** Motivo: estado ruim nunca entra no banco, e o aparelho pode tentar de novo.
+2. ~~**Quem cria o beneficiário de transferência**~~ **Decidido: o aparelho, no mesmo lote da conta.** Motivo: o servidor continua só guardando, e a decisão 1 precisa que o beneficiário esteja no lote para validar a ponta.
+3. ~~**Conflitos de edição**~~ **Decidido: a última versão inteira vence.** Motivo: para uso da família, começar simples; a perda de memo ou de estado numa edição concorrente é aceita.
+4. ~~**Remoção contra edição**~~ **Decidido: a remoção vence.** Motivo: a edição feita offline numa transferência já apagada some, e o aparelho atrasado só recebe a remoção. Depende da 3: o servidor precisa guardar a marca de removida para recusar a regravação.
+5. ~~**Espelho que não está no banco local**~~ **Decidido: recusar o salvamento até sincronizar.** Motivo: nunca nascem duas espelhos, o que a decisão 1 não aceitaria de qualquer forma.
+6. ~~**Estado de compensação não propaga**~~ **Decidido: não propaga (reproduz o YNAB).** Motivo: cada ponta é conferida contra o extrato da sua conta, e o comportamento já foi visto na tela (roteiro 3C).
 7. ~~Editar a espelho de uma parte muda a data da divisão inteira~~: resolvido pela tela (roteiro 6D). O YNAB bloqueia a edição da data na espelho; o Tostão faz o mesmo.
 
 ## 12. O que ainda não achamos

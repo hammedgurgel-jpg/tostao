@@ -42,6 +42,22 @@ _Evite_: instância, parcela
 Uma parte de uma transação dividida entre várias categorias; as partes somam o valor da transação.
 _Evite_: rateio, split
 
+**Transferência**:
+Movimento de dinheiro entre duas contas, registrado como duas transações ligadas: uma em cada conta.
+_Evite_: movimentação de dinheiro (é entre categorias), transferência entre categorias
+
+**Ponta**:
+Cada uma das duas transações de uma transferência.
+_Evite_: lado, perna
+
+**Espelho**:
+A ponta que o app cria na outra conta, ligada à ponta original. Na transação agendada não é gravado: só aparece na tela.
+_Evite_: contraparte, par (par é o conjunto das duas pontas)
+
+**Beneficiário de transferência**:
+O beneficiário ligado a uma conta, com o nome "Transfer : nome da conta". Escolhê-lo numa transação a torna uma transferência.
+_Evite_: beneficiário da conta, beneficiário especial
+
 **Atribuição**:
 O valor que a família decide reservar para uma categoria num mês do orçamento. Pode ser negativo (para devolver dinheiro).
 _Evite_: orçado, alocação, budgeted
