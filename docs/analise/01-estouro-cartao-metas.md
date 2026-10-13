@@ -273,7 +273,7 @@ Estado dos três pontos em aberto (2026-10-13):
 
 Resolvidos na análise 02: a geração das datas das agendadas (§2), como a movimentação altera o atribuído (§1) e a reconciliação de contas (§3).
 
-Os três pontos estão fechados. Ainda não testamos na tela uma categoria que gasta em **dois cartões** no mesmo mês. A divisão proporcional da parte coberta entre eles é regra nossa. A biblioteca Kotlin (offsets ~1,30M–1,45M) foi lida em parte: tem `Calculations` com os campos do cartão (1312078–1312411), mas a lógica da soma do mês não aparece nela.
+Os três pontos estão fechados. O motor que monta essas somas a partir das transações está em `src/motor.rs`; os roteiros 1 e 2 estão refeitos a partir de transações em `tests/motor.rs`. Ainda não testamos na tela uma categoria que gasta em **dois cartões** no mesmo mês. A divisão proporcional da parte coberta entre eles é regra nossa. A biblioteca Kotlin (offsets ~1,30M–1,45M) foi lida em parte: tem `Calculations` com os campos do cartão (1312078–1312411), mas a lógica da soma do mês não aparece nela.
 
 Outras funcionalidades ainda não olhadas:
 - regras de empréstimo/hipoteca além da reconciliação (`isLoanAccount`);
