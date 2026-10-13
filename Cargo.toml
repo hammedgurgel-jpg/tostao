@@ -1,0 +1,11 @@
+[package]
+name = "ynab-sync"
+version = "0.1.0"
+edition = "2021"
+description = "Reimplementação do protocolo de sincronização de orçamento e dos cálculos do cliente web do YNAB, a partir de análise do bundle publicado"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# preserve_order: os objetos JSON mantêm a ordem de inserção dos campos
+serde_json = { version = "1", features = ["preserve_order"] }
