@@ -769,4 +769,17 @@ fn roteiro_8_pagamento_alem_da_divida_do_mes_anterior() {
     assert_eq!((c.atividade(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao")), (-80_000, -30_000));
     assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (970_000, 940_000));
     assert_eq!((c.disponivel(NOV, "mercado"), c.disponivel(NOV, "pagamento-cartao")), (30_000, 0));
+
+    // 8F: apaga o estorno, tira a atribuição de outubro e gasta 10 no cartão
+    // em Mercado, sem dinheiro: o +10 sai.
+    let estorno = r.orc.transacoes.iter().rev().find(|t| t.conta == "cartao" && t.valor == 20_000).unwrap().id.clone();
+    r.remove(&estorno);
+    r.orc.atribuicoes.retain(|a| a.mes != dia(OUT, 1));
+    r.lanca("cartao", -10_000, Some("mercado"));
+    let c = r.calcula();
+    assert_eq!((c.conta("corrente"), c.conta("cartao")), (940_000, 0));
+    assert_eq!((c.atividade(OUT, "mercado"), c.disponivel(OUT, "mercado")), (-10_000, -10_000));
+    assert_eq!(c.cat(OUT, "mercado").credit_overspent(), -10_000, "amarelo");
+    assert_eq!((c.atividade(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao")), (-60_000, -10_000));
+    assert_eq!(c.a_atribuir(OUT), 950_000);
 }

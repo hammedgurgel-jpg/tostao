@@ -505,6 +505,8 @@ Novembro é sempre o "Ready to Assign" de outubro mais o disponível negativo (v
 - 8D (atribui 10 a Mercado e gasta 10 no Cartão em Mercado): Corrente 940, Cartão 0, Mercado −10 / 0, Pagamento −50 / 0, "A atribuir" **940** em outubro e em novembro. **Conferido.** A alternativa **por ordem** (950) está descartada: gastar o crédito no mesmo mês desfaz o +10.
 - 8E (apaga o gasto do 8D; estorno de 20 no Cartão em Mercado): Corrente 940, Cartão +30, Mercado +20 / 30, Pagamento −80 / −30 (vermelho), "A atribuir" **970** em outubro e 940 em novembro (Mercado 30 e Pagamento 0 em novembro). **Conferido.** A alternativa **só pagamento** (960) está descartada.
 - Com o 8E, os três estornos vistos fecham numa regra (`estorno_limitado` em `src/motor.rs`): **o estorno coberto só sai da categoria de pagamento na parte que reduz a dívida do cartão ou que vai para o "A atribuir"**; a parte que só deixa o cartão positivo fica na categoria do estorno. Primeira tentativa: reduziu a dívida, saiu 20. Segunda: cartão em 0 e sem pagamento no mês, não saiu nada. Terceira: depois de pagar além da dívida, saiu 20 e foi para o "A atribuir". O teste da segunda tentativa deixou de ser `#[ignore]`.
+- 8F (apaga o estorno; Mercado com 0 em outubro; 10 no Cartão em Mercado, sem dinheiro): Corrente 940, Cartão 0, Mercado −10 (amarelo, crédito), Pagamento −60 / −10 (vermelho), "A atribuir" **950** em outubro. **Conferido.** Gastar o crédito sem dinheiro na categoria também desfaz o +10. Novembro não foi visto.
+- **Roteiro 8 concluído**: as previsões da regra bateram nos seis passos, e as três alternativas foram descartadas.
 
 #### Segunda tentativa (2026-10-13)
 
@@ -556,7 +558,7 @@ Fechadas com o usuário em 2026-10-13. Nenhuma ficou adiada.
 - A soma do servidor para receita e categorias com transferências (só inferida pelos painéis do cliente).
 - ~~Se uma entrada sem categoria vinda de acompanhamento entra no "A atribuir"~~: não entra, conferido no roteiro 4B. Ela fica na linha "sem categoria" com saldo positivo. Falta saber o que acontece com esse saldo positivo na virada do mês.
 - Por que pagar o cartão além da dívida (saldo do cartão positivo) aumentou o "A atribuir" em 10 (roteiro 5C), e por que ele não voltou quando o crédito saiu do cartão (5D).
-  - **Conferido no roteiro 8** (8B a 8E): o pagamento da dívida do mês anterior não soma; o que passa da dívida soma; gastar o crédito no mesmo mês desfaz; estorno depois do excesso soma. Falta o 8F.
+  - **Conferido no roteiro 8** (8B a 8E): o pagamento da dívida do mês anterior não soma; o que passa da dívida soma; gastar o crédito no mesmo mês desfaz; estorno depois do excesso soma; gasto sem dinheiro desfaz (8F).
 - Estorno no cartão: só sai da categoria de pagamento na parte que reduz a dívida ou vai para o "A atribuir" (roteiro 8, três tentativas; `estorno_limitado`).
   - Regra usada em `src/motor.rs` (`pagamento_alem_da_divida`): a parte dos pagamentos do mês que deixa o cartão com saldo positivo, além do saldo positivo que ele já tinha no fim do mês anterior, vai para o "A atribuir" do mês (`additional_to_be_budgeted`). Ela continua saindo da categoria de pagamento. Os gastos do cartão contam; as transferências que saem dele para conta orçamentária não. Fecha com 5A–5D e novembro, mas só esse caso foi visto. Falta conferir na tela: pagar a mais com dívida de mês anterior, e gastar no cartão com saldo positivo.
 - Os nomes internos `transfer_on_budget`, `transfer`, `transfer_off_budget` (66689): onde são usados.
