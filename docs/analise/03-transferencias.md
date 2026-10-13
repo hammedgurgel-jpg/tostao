@@ -168,9 +168,9 @@ Resumo:
   - "sem categoria" e "estouro no crédito" ignoram as transferências entre orçamentárias (2112732, 2114000).
 - A regra conferida na tela (análise 01, roteiro 2, passo 2B): o pagamento de 30 da corrente para o cartão **sai da categoria de pagamento** (Activity +30 − 30 = 0). Juntando com o painel: **cada entrada no cartão que é transferência de conta orçamentária é uma saída em dinheiro da categoria de pagamento daquele cartão**. É o termo "pagamentos (saídas em dinheiro, ≤ 0)" da fórmula em `calculate_credit_card_payment_balance`.
 - **Não verificado:**
-  - transferência do cartão para a corrente (saída do cartão): se volta para a categoria de pagamento (Activity positiva). Roteiro 5D.
+  - ~~transferência do cartão para a corrente~~: **conferido (roteiro 5D)**, não volta para a categoria de pagamento e não muda o "A atribuir".
   - pagamento vindo de conta de acompanhamento: não é transferência entre orçamentárias, então pede categoria no cartão e não conta como pagamento no painel. Roteiro não incluído.
-  - pagamento maior do que o disponível: a categoria de pagamento fica negativa (estado `UnfundedPaymentMade`, análise 01 §3). Pela regra do estouro em dinheiro, deveria descontar do "A atribuir" do mês seguinte. Roteiro 5C.
+  - pagamento maior do que o disponível: **conferido (roteiro 5B)**, a categoria de pagamento fica negativa em vermelho (estouro em dinheiro). Ainda falta ver o desconto no "A atribuir" do mês seguinte.
 
 ## 5. Subtransações (divisão com transferência)
 
@@ -345,6 +345,22 @@ Orçamento novo (ou desfaça os roteiros anteriores): Corrente 1.000; atribui 10
 | 5C | Na Corrente, nova saída de 10, sem beneficiário, escolhendo como **categoria** "Pagamento do Cartão" | 930 | +10 | 40 | −10 / −10 ? | 900 | O beneficiário vira "Transfer : Cartão" e a categoria some ao salvar. A categoria de pagamento fica negativa (pagou sem dinheiro reservado). Anotar o "A atribuir" de **novembro**: esperado 890 ? |
 | 5D | No Cartão, saída de 10 para "Transfer : Corrente" (devolve o crédito) | 940 | 0 | 40 | 0 / 0 ? | 900 | Anotar se a saída do cartão volta para a categoria de pagamento (Activity) ou fica fora. |
 
+**Conferência na tela (2026-10-13), roteiro 5.** Os 100 **não** foram atribuídos a Mercado antes. Por isso o gasto de 60 virou estouro no crédito e o pagamento ficou sem dinheiro reservado.
+
+| Passo | Corrente | Cartão | Mercado | Pagamento (atividade / disponível) | A atribuir |
+|---|---|---|---|---|---|
+| 5A | 1.000 | −60 | −60 (amarelo, crédito) | 0 / 0 (amarelo) | 1.000 |
+| 5B | 940 | 0 | −60 | −60 / −60 (vermelho) | 1.000 |
+| 5C | 930 | +10 | −60 | −70 / −70 | **1.010** |
+| 5D | 940 | 0 | −60 | −70 / −70 | 1.010 |
+
+- **Nome na tela**: o YNAB mostra "**Payment:** (conta)" nas entradas no cartão vindas da corrente, e "Payment: Cartão" na ponta da corrente. Na saída do cartão para a corrente (5D), mostra "**Transfer:** Conta Corrente". Isso bate exatamente com `isCreditCardPaymentTransfer` (§4): entrada no cartão ou saída para o cartão é pagamento; saída do cartão não é. **Conferido.**
+- A coluna de categoria mostra "Credit Card Payments: Cartão" nas duas pontas, inclusive na saída do 5D. Pelo código é só exibição (§4, 2852178). **Inferido**, não dá para ver o campo gravado.
+- 5B: o pagamento lançado **pelo lado do cartão** contou como pagamento (atividade −60). Como o gasto não estava coberto, a categoria de pagamento ficou negativa em **vermelho** (estouro em dinheiro), e o cabeçalho do cartão mostrou "Payment −60". **Conferido**: pagamento sem dinheiro reservado = estouro em dinheiro da categoria de pagamento.
+- 5C: escolher a categoria de pagamento numa saída da corrente sem beneficiário virou "Payment: Cartão". **Conferido.** O cartão ficou com saldo positivo de 10 e o "A atribuir" de outubro **subiu para 1.010**. **Não explicado**: não está no bundle (é soma do servidor).
+- 5D: a saída de 10 do cartão para a corrente **não mexeu** na categoria de pagamento (−70) nem no "A atribuir" (1.010). **Conferido.**
+- Nos quatro passos vale a conta "dinheiro nas contas orçamentárias = A atribuir + disponível das categorias sem estouro no crédito": 940 = 1.000 − 60 (5B), 940 = 1.010 − 70 (5C e 5D). O estouro no crédito de Mercado (−60) fica de fora. Pode ser a pista para o +10, mas é só uma conta que fecha.
+
 ### Roteiro 6 — divisão com transferência
 
 Orçamento do roteiro 3 no início (Corrente 1.000, Poupança 0), 100 atribuídos a Mercado ("A atribuir" 900).
@@ -393,7 +409,7 @@ Orçamento do roteiro 3 no início (Corrente 1.000, Poupança 0), 100 atribuído
 - O caso "B existe mas não aponta de volta para A": quando acontece.
 - A soma do servidor para receita e categorias com transferências (só inferida pelos painéis do cliente).
 - ~~Se uma entrada sem categoria vinda de acompanhamento entra no "A atribuir"~~: não entra, conferido no roteiro 4B. Ela fica na linha "sem categoria" com saldo positivo. Falta saber o que acontece com esse saldo positivo na virada do mês.
-- Se uma saída do cartão para a corrente volta para a categoria de pagamento (roteiro 5D).
+- Por que pagar o cartão além da dívida (saldo do cartão positivo) aumentou o "A atribuir" em 10 (roteiro 5C), e por que ele não voltou quando o crédito saiu do cartão (5D).
 - Os nomes internos `transfer_on_budget`, `transfer`, `transfer_off_budget` (66689): onde são usados.
 - Regras de empréstimo (`setDebtTransactionTypeIfNeeded`, categoria da dívida).
 - Se o servidor do YNAB valida ou conserta pares quebrados.
