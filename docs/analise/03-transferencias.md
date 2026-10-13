@@ -329,9 +329,9 @@ Antes: atribui 300 a Investimentos ("A atribuir" 700).
 **Conferência na tela (2026-10-13), roteiro 4.** Os 300 **não** foram atribuídos a Investimentos antes. Por isso o "A atribuir" ficou 300 acima da tabela e Investimentos ficou estourada.
 - 4A: Corrente 700 e Investimento 300. A ponta da Corrente tem a categoria "Mensal: Investimento". A tela da conta Investimento **nem tem coluna de categoria**. No plano, Investimentos ficou com atividade −300 e disponível −300 (estourada), e o "A atribuir" continuou 1.000. **Conferido**: a ponta orçamentária é um gasto comum da categoria.
 - 4B: Corrente 800 e Investimento 200. Na Corrente, a entrada de 100 apareceu com "This needs a category" e o aviso "1 new transaction to approve or categorize". No plano apareceu a linha "Uncategorized Transactions" com atividade +100 e disponível +100, e o **"A atribuir" continuou 1.000**. **Conferido**: entrada sem categoria vinda de acompanhamento **não** entra no "A atribuir". Ela fica parada na linha "sem categoria", com saldo positivo.
-- 4C: a entrada passou a "Inflow: Ready to Assign". O plano depois disso não foi visto (esperado: "A atribuir" 1.100).
+- 4C (refeito): uma saída de 100 do Investimento para a Corrente, classificada na Corrente como "Inflow: Ready to Assign", levou o "A atribuir" de outubro a **1.100**. O Investimento ficou em −100. **Conferido**: a entrada vinda de acompanhamento com categoria de receita é receita do mês.
 - 4D: apagar a ponta na conta Investimento apagou a da Corrente (Corrente 700, Investimento 300). **Conferido.**
-- 4E: tirar a categoria da ponta do 4A deixou "This needs a category" (−300) e manteve Corrente 700. O plano depois disso não foi visto.
+- 4E: tirar a categoria da ponta do 4A deixou "This needs a category" (−300) e manteve Corrente 700. O plano depois disso não foi visto. **Inferido** pela regra já conferida na análise 01 (passo 1B: saída sem categoria em conta de dinheiro é estouro em dinheiro e desconta do "A atribuir" do mês seguinte). Não há indício de que a transferência mude essa regra.
 - As pontas criadas pelos dois lados nasceram **não compensadas**.
 
 ### Roteiro 5 — cartão de crédito
