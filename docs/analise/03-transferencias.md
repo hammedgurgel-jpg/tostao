@@ -298,10 +298,18 @@ Valores esperados marcados com "?" são inferidos; os outros seguem do código l
 | 3A | Na Corrente, saída de 200 com beneficiário "Transfer : Poupança", memo "reserva" | 800 | 200 | 1.000 | Na Poupança aparece a entrada de 200, beneficiário "Transfer : Corrente", memo "reserva", **não compensada**. Nenhuma das duas tem campo de categoria. |
 | 3B | Na **Poupança**, muda o valor para 250 e o memo para "reserva 2" | 750 | 250 | 1.000 | A ponta da Corrente vira saída de 250 com memo "reserva 2". |
 | 3C | Na Poupança, marca a ponta como compensada | 750 | 250 | 1.000 | A ponta da Corrente **continua não compensada**. |
-| 3D | Na Corrente, muda a data da ponta para 5 dias depois | 750 | 250 | 1.000 | A data da ponta da Poupança acompanha. |
+| 3D | Na Corrente, muda a data da ponta para **3 dias antes** (data passada) | 750 | 250 | 1.000 | A data da ponta da Poupança acompanha. |
 | 3E | Na Poupança, apaga a ponta | 1.000 | 0 | 1.000 | A ponta da Corrente some junto. |
+| 3F | Refaz a transferência e muda a data da ponta da Corrente para uma data **futura** | 1.000 | 0 | 1.000 | A transação vira agendada na Corrente e a ponta da Poupança some. |
 
 Nenhuma categoria muda em nenhum passo.
+
+**Conferência na tela (2026-10-13), passos 3A a 3C e data futura:**
+- 3A: Corrente 800, Poupança 200, "A atribuir" 1.000. **Conferido.**
+- 3B: a ponta da Poupança ficou com 250 e memo "reserva 2", categoria "Category not needed". A Corrente foi para 750 e o "A atribuir" continuou 1.000. **Conferido**: valor e memo propagam da espelho para a origem.
+- 3C: a ponta da Poupança ficou compensada (saldo compensado da Poupança 250). O estado da ponta da Corrente ainda **não foi visto**.
+- 3D, feito com data **futura** (de 13/10 para 18/10): a transação da Corrente virou **agendada** (250, "Transfer: Poupança", memo "reserva 2", "Category not needed"). A ponta da Poupança sumiu, e a Corrente voltou a 1.000 e a Poupança a 0. **Conferido**: é a conversão em agendada da §2 (`convertToScheduledTransaction`), que remove a espelho. O roteiro foi corrigido para usar data passada no 3D, e o caso futuro virou o 3F.
+- Na tela da conta Poupança **não apareceu** a espelho desenhada da agendada (§6). Falta ver se ela aparece em "All Accounts", porque o código que a desenha é da lista de todas as contas (2920700).
 
 ### Roteiro 4 — orçamentária e acompanhamento
 
