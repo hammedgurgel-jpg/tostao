@@ -497,6 +497,11 @@ A atribuição sozinha leva o "Ready to Assign" de 960 a 950; o gasto, pela regr
 
 Novembro é sempre o "Ready to Assign" de outubro mais o disponível negativo (vermelho) do Pagamento em outubro. Ex.: 8C, 960 − 10 = 950. Se outubro bater e novembro não, o erro está na virada, não na regra. Se outubro não bater com nenhuma coluna, anote o valor: ele ajuda a achar a regra certa.
 
+#### Terceira tentativa (2026-10-13), em andamento
+
+- Passo 0: Corrente 1.000, Cartão −50, setembro com Pagamento +50 / 50 e "A atribuir" −50, outubro com Pagamento 0 / 50 e "A atribuir" 950. **Conferido.**
+- 8B (pagamento de 50 como transferência): Corrente 950, Cartão 0, Pagamento de outubro −50 / 0, "A atribuir" 950 em outubro e em novembro; setembro não mudou. **Conferido.** A alternativa **só o mês** (1.000) está descartada: o pagamento da dívida de setembro não vai para o "A atribuir".
+
 #### Segunda tentativa (2026-10-13)
 
 Os pagamentos **de novo não viraram transferência**: o Cartão ficou em 0 e a linha "Uncategorized Transactions" de outubro ficou em −50 e −60. O gasto de setembro tinha sido apagado (Mercado começou outubro com 50 e o Cartão com 0). O +10 continua **não testado**. Bate com o motor (teste `roteiro_8_segunda_tentativa_sem_transferencia`):
