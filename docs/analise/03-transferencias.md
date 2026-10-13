@@ -692,15 +692,17 @@ Confira:
 
 **Lançamento A2 — pagamento do Cartão**
 
+O jeito mais seguro (conferido no roteiro 5C): escolher a **categoria de pagamento do cartão** numa saída da Corrente. O YNAB troca o beneficiário sozinho para "Payment: Cartão".
+
 | Campo | Valor |
 |---|---|
 | Abrir a conta | **Conta Corrente** (grupo CASH) → Add Transaction |
-| Date | **20/09/2026** (setembro) |
-| Payee | digite "Cartão" e escolha **"Transfer : Cartão"** ou **"Payment: Cartão"** na lista de transferências. Não use "Create payee" |
-| Category | não escolher nada; aparece **"Category not needed"** |
+| Date | **20/09/2026** |
+| Payee | **deixar vazio** (não digitar "Mercado x" nem outro nome) |
+| Category | abrir a lista e escolher, no grupo **Credit Card Payments**, a categoria **Cartão**. Ao escolher, o Payee vira sozinho **"Payment: Cartão"** e a categoria vira "Category not needed" |
 | Outflow | **60** |
-| Dinheiro sai de → chega em | Conta Corrente → Cartão |
-| Depois de salvar | Corrente **1.040**; **Cartão +10** (era −50). A linha da Corrente **não** mostra "This needs a category" |
+| Sai de → chega em | Conta Corrente → Cartão |
+| Depois de salvar | Corrente **1.040** e **Cartão +10** (era −50). Na tela "All Accounts" aparecem **duas** linhas de 20/09: a da Corrente ("Payment: Cartão", saída 60) e a do Cartão ("Payment: Conta Corrente", entrada 60). Se aparecer "Mensal: Mercado" na categoria, está errado |
 
 Confira:
 
@@ -799,6 +801,8 @@ Mande uma captura do plano (Sep, Oct e Nov) e da tela "All Accounts" no fim de c
 ##### Conferência da segunda tentativa (2026-10-13)
 
 - **Etapa 1 (limpeza)**: Corrente 1.100, Investimento −100, Cartão 0, Cartão 2 0. Setembro: Uncategorized +100 / 100, Mercado 50 / 0 / 50, Ready to Assign 950. Outubro: Uncategorized 0 / **100**, Mercado 50, "Left Over from Last Month" 150 (100 sem categoria + 50 de Mercado), Ready to Assign 950. **Conferido**, inclusive o carregamento do "sem categoria" positivo pela segunda vez.
+- **Etapa 2, A1** (50 no Cartão em Mercado, 15/09): Cartão −50, Corrente 1.100. Setembro: Mercado 50 / −50 / 0 ("Fully Spent"), Pagamento do Cartão +50 / 50, Ready to Assign 950. Outubro: Pagamento do Cartão 50, Uncategorized 100, Ready to Assign 950. **Conferido.**
+- **Etapa 2, A2, lançado de outro jeito**: saída de **50** da Corrente com Payee "Mercado x" e categoria **Mensal: Mercado** (20/09), e não pagamento de 60 para o Cartão. Setembro: Mercado 50 / −100 / **−50 amarelo** (estouro no crédito), Pagamento do Cartão 0 / 0, Ready to Assign 950; outubro 950, Pagamento 0. **Conferido** (teste `roteiro_9_segunda_tentativa_etapa_2_como_lancada`): o dinheiro da categoria cobre primeiro o gasto em dinheiro; o gasto no cartão fica sem cobertura e sai do Pagamento. É a ordem de `calculate_budgeted_cash_credit_outflows` (dinheiro antes do crédito), agora vista na tela. O +10 **ainda não foi testado**. A ficha do A2 passou a usar a categoria de pagamento como atalho.
 
 #### Primeira tentativa (2026-10-13)
 

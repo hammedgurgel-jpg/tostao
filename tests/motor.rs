@@ -928,3 +928,43 @@ fn roteiro_9_segunda_tentativa_previsao() {
     assert_eq!((c.a_atribuir(SET), c.a_atribuir(OUT), c.a_atribuir(NOV)), (890_000, 880_000, 680_000));
     assert_eq!((c.disponivel(NOV, "pagamento-cartao"), c.disponivel(NOV, "pagamento-cartao2")), (28_000, 42_000));
 }
+
+#[test]
+fn roteiro_9_segunda_tentativa_etapa_2_como_lancada() {
+    // Conferido na tela em 2026-10-13. A1 certo (50 no Cartão em Mercado,
+    // 15/09). A2 foi lançado como gasto comum: 50 da Corrente em Mercado
+    // (20/09), sem transferência para o Cartão.
+    const SET: u32 = 9;
+    let mut r = Roteiro::novo();
+    r.transacao("t1").data = dia(SET, 1);
+    r.cartao("cartao");
+    r.cartao("cartao2");
+    r.conta("investimento", TipoConta::Dinheiro, false);
+    r.orc.atribuicoes.push(Atribuicao { categoria: "mercado".into(), mes: dia(SET, 1), valor: 50_000 });
+    let volta = r.transfere("investimento", "corrente", 100_000, None);
+    data_das_pontas(&mut r, volta, dia(SET, 1));
+
+    // A1: o gasto coberto passa para o Pagamento, que vai para outubro.
+    let gasto = r.lanca("cartao", -50_000, Some("mercado"));
+    r.transacao(&gasto).data = dia(SET, 15);
+    let c = r.calcula();
+    assert_eq!((c.conta("corrente"), c.conta("cartao")), (1_100_000, -50_000));
+    assert_eq!((c.atividade(SET, "mercado"), c.disponivel(SET, "mercado")), (-50_000, 0));
+    assert_eq!((c.atividade(SET, "pagamento-cartao"), c.disponivel(SET, "pagamento-cartao")), (50_000, 50_000));
+    assert_eq!((c.disponivel(OUT, "pagamento-cartao"), c.mes(dia(OUT, 1)).unwrap().sem_categoria.balance), (50_000, Some(100_000)));
+    assert_eq!((c.a_atribuir(SET), c.a_atribuir(OUT)), (950_000, 950_000));
+
+    // A2 como lançado: mais 50 em Mercado, em dinheiro. O dinheiro da
+    // categoria cobre primeiro o gasto em dinheiro; o do cartão fica sem
+    // cobertura (amarelo) e sai do Pagamento.
+    let saida = r.lanca("corrente", -50_000, Some("mercado"));
+    r.transacao(&saida).data = dia(SET, 20);
+    let c = r.calcula();
+    assert_eq!((c.conta("corrente"), c.conta("cartao")), (1_050_000, -50_000));
+    assert_eq!((c.atividade(SET, "mercado"), c.disponivel(SET, "mercado")), (-100_000, -50_000));
+    let mercado = c.cat(SET, "mercado");
+    assert_eq!((mercado.cash_overspent(), mercado.credit_overspent()), (0, -50_000), "amarelo, crédito");
+    assert_eq!((c.atividade(SET, "pagamento-cartao"), c.disponivel(SET, "pagamento-cartao")), (0, 0));
+    assert_eq!(c.disponivel(OUT, "pagamento-cartao"), 0);
+    assert_eq!((c.a_atribuir(SET), c.a_atribuir(OUT)), (950_000, 950_000));
+}
