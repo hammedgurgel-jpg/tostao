@@ -411,40 +411,91 @@ Isso contradiz os bloqueios lidos no código (§5). A explicação mais prováve
 
 ### Roteiro 8 — o +10 do pagamento além da dívida
 
-Objetivo: conferir a regra inferida do roteiro 5C (`pagamento_alem_da_divida` em `src/motor.rs`, §12):
-
-> a parte dos pagamentos do mês que deixa o cartão com saldo positivo, além do saldo positivo que ele já tinha no fim do mês anterior, vai para o "A atribuir" do mês. Ela continua saindo da categoria de pagamento. Os gastos e estornos do cartão no mês entram na conta; as transferências que saem do cartão para conta orçamentária não.
-
-Cada passo separa a regra de uma alternativa:
-- **por ordem**: o excesso é contado na hora do pagamento e nunca volta, mesmo se o cartão gastar depois no mesmo mês;
-- **só o mês**: compara os pagamentos só com os gastos do mês, sem olhar a dívida que veio do mês anterior;
+**Para que serve.** No roteiro 5C, pagar o cartão além da dívida aumentou o "A atribuir" em 10. O motor usa uma regra inferida para isso (`pagamento_alem_da_divida`, §12): *a parte do pagamento que deixa o cartão com saldo positivo vai para o "A atribuir" do mês*. Este roteiro confere a regra e a separa de três alternativas:
+- **por ordem**: o +10 conta na hora do pagamento e nunca volta, mesmo se o cartão gastar depois;
+- **só o mês**: o pagamento é comparado só com os gastos do mês, sem a dívida do mês anterior;
 - **só pagamento**: um estorno no cartão nunca vai para o "A atribuir".
 
-Orçamento novo:
-- **Corrente** (orçamentária) com saldo inicial de 1.000 em **01/09**, classificado como "Pronto para atribuir";
-- **Cartão** (cartão de crédito), saldo 0;
-- categoria Mercado; em **setembro**, atribui 50 a Mercado.
+**Quem paga quem.** O dinheiro do pagamento **sai da Conta Corrente** e **entra no Cartão**. Todo pagamento é lançado **na Conta Corrente**, com o beneficiário de transferência do Cartão. Nunca lance o pagamento como saída comum: sem o beneficiário de transferência, o YNAB trata como gasto sem categoria (foi o que aconteceu na primeira tentativa, no fim deste roteiro).
 
-No início: "A atribuir" de setembro, outubro e novembro = 950. Se o saldo inicial ficar com a data de hoje (13/10), setembro mostra −50 ("You assigned more than you have"); outubro e novembro não mudam.
+Todas as datas de outubro são **13/10 (hoje)**. Data futura vira agendada (roteiro 3F).
 
-**Como lançar o pagamento** (8B e 8C): na conta Cartão, botão "Record Payment"; ou, na Corrente, beneficiário "Transfer : Cartão". Confira antes de seguir: na Corrente a linha mostra "Payment: Cartão" e "Category not needed", e na conta Cartão aparece a entrada. Se aparecer "This needs a category", não é transferência. Nos gastos do 8D e do 8F, escolha a categoria Mercado.
-Todas as transações de outubro com data de **hoje (13/10) ou antes**: data futura vira agendada (roteiro 3F). Se a tela não deixar lançar em setembro (mês antes do início do orçamento), anote e faça só os passos 8C a 8F, partindo de cartão com saldo 0. Nesse caso, os valores esperados mudam; refaço a conta.
+#### Ponto de partida
 
-Valores esperados pela regra (calculados com o motor). "Pagamento" é a categoria de pagamento do Cartão em **outubro**: atividade / disponível. "A atribuir" é o de outubro e o de novembro.
+O orçamento TESTE como está:
+- Conta Corrente com saldo inicial de 1.000 (13/10, "Inflow: Ready to Assign");
+- Cartão com um gasto de 50 em Mercado em 15/09;
+- setembro com 50 atribuídos a Mercado.
 
-| Passo | Ação | Corrente | Cartão | Mercado (out) | Pagamento (out) | A atribuir out / nov | Se fosse a alternativa |
-|---|---|---|---|---|---|---|---|
-| 8A | Em 15/09, gasta 50 no Cartão em Mercado | 1.000 | −50 | 0 | 0 / 50 | 950 / 950 | — (em setembro: Pagamento +50 / 50) |
-| 8B | Em 13/10, paga 50 da Corrente para o Cartão | 950 | 0 | 0 | −50 / 0 | 950 / 950 | **só o mês**: 1.000 |
-| 8C | Em 13/10, paga mais 10 da Corrente para o Cartão | 940 | +10 | 0 | −60 / −10 | **960** / 950 | (é o caso do 5C, agora com dívida de setembro) |
-| 8D | Atribui 10 a Mercado em outubro e gasta 10 no Cartão em Mercado | 940 | 0 | 10 → 0 | −50 / 0 | **940** / 940 | **por ordem**: 950 |
-| 8E | Apaga o gasto do 8D e lança no Cartão uma **entrada** de 20 em Mercado (estorno) | 940 | +30 | 30 | −80 / −30 | **970** / 940 | **só pagamento**: 960 |
-| 8F | Apaga o estorno do 8E, tira a atribuição de 10 de Mercado (volta a 0) e gasta 10 no Cartão em Mercado, sem dinheiro | 940 | 0 | −10 (crédito) | −60 / −10 | **950** / 940 | **por ordem**: 960 |
+**Passo 0 — limpar outubro.** Apague o que sobrou da primeira tentativa:
+1. Na **Conta Corrente**: as duas saídas de 13/10 sem beneficiário (50 e 10, "This needs a category").
+2. No **Cartão**: a saída de 10 em 13/10 sem categoria.
+3. No plano de **outubro**: atribuído de Mercado = 0.
 
-O que anotar em cada passo:
-- "A atribuir" de **outubro e de novembro** (a tela de novembro pode ser vista sem lançar nada nele);
-- atividade e disponível da categoria de pagamento em outubro, e a cor (vermelho = estouro em dinheiro);
-- saldos da Corrente e do Cartão.
+Confira:
+
+| Onde | Esperado |
+|---|---|
+| Conta Corrente | 1.000 |
+| Cartão | −50 |
+| Outubro, Pagamento do Cartão (Activity / Available) | 0 / 50 |
+| Outubro, Mercado | 0 |
+| "Ready to Assign" de outubro / novembro | 950 / 950 |
+| Setembro | −50 ("You assigned more than you have"); não muda nos passos seguintes |
+
+#### Como lançar um pagamento (passos 8B e 8C)
+
+1. Abra a **Conta Corrente** e clique em **Add Transaction**.
+2. **Date**: 13/10/2026.
+3. **Payee**: digite "Cartão" e escolha a opção da lista de **transferências** ("Transfer : Cartão" ou "Payment: Cartão"). Não escolha "Create payee".
+4. **Category**: deixe em branco. Depois de escolher o beneficiário, deve aparecer "Category not needed".
+5. **Outflow**: o valor do passo. Salve.
+
+Antes de anotar, confira:
+- na Conta Corrente, a linha mostra "Payment: Cartão" e **não** mostra "This needs a category";
+- abrindo o **Cartão**, aparece a entrada do mesmo valor em 13/10, com beneficiário "Payment: Conta Corrente" (ou "Transfer : Conta Corrente").
+
+Se não aparecer no Cartão, apague e lance de novo. Outra forma: abrir o **Cartão** e usar o botão **Record Payment**, escolhendo a Conta Corrente como origem.
+
+#### Passos
+
+Em cada passo, anote: saldo da Conta Corrente e do Cartão; Activity e Available do Pagamento do Cartão em **outubro** (e a cor); "Ready to Assign" de **outubro** e de **novembro**.
+
+**8B — paga a dívida de setembro.** Pagamento de **50** (na Conta Corrente, Payee "Transfer : Cartão", Outflow 50).
+
+| Corrente | Cartão | Pagamento out (Activity / Available) | Ready to Assign out / nov | Se der… |
+|---|---|---|---|---|
+| 950 | 0 | −50 / 0 | 950 / 950 | out 1.000 → vale **só o mês** |
+
+**8C — paga 10 a mais do que deve.** Outro pagamento, de **10**, igual ao 8B.
+
+| Corrente | Cartão | Pagamento out | Ready to Assign out / nov | Se der… |
+|---|---|---|---|---|
+| 940 | +10 | −60 / −10 (vermelho) | **960** / 950 | out 950 → o +10 não existe com dívida anterior |
+
+**8D — gasta o crédito.** No plano de outubro, atribua **10** a Mercado. Depois, no **Cartão**: Add Transaction, data 13/10, Payee qualquer (ex.: "Mercado X"), **Category: Mercado**, **Outflow 10**.
+
+| Corrente | Cartão | Mercado out | Pagamento out | Ready to Assign out / nov | Se der… |
+|---|---|---|---|---|---|
+| 940 | 0 | 0 | −50 / 0 | **940** / 940 | out 950 → vale **por ordem** |
+
+A atribuição sozinha leva o "Ready to Assign" de 960 a 950; o gasto, pela regra, leva a 940.
+
+**8E — estorno no cartão.** No **Cartão**, apague o gasto do 8D. Lance no **Cartão**: data 13/10, Payee qualquer, **Category: Mercado**, **Inflow 20** (entrada, não saída). Mercado continua com 10 atribuídos.
+
+| Corrente | Cartão | Mercado out | Pagamento out | Ready to Assign out / nov | Se der… |
+|---|---|---|---|---|---|
+| 940 | +30 | 30 | −80 / −30 | **970** / 940 | out 960 → vale **só pagamento** |
+
+**8F — gasto sem dinheiro.** No **Cartão**, apague o estorno do 8E. No plano de outubro, atribuído de Mercado = **0**. Lance no **Cartão**: data 13/10, Payee qualquer, **Category: Mercado**, **Outflow 10**.
+
+| Corrente | Cartão | Mercado out | Pagamento out | Ready to Assign out / nov | Se der… |
+|---|---|---|---|---|---|
+| 940 | 0 | −10 (amarelo) | −60 / −10 | **950** / 940 | out 960 → vale **por ordem** |
+
+Novembro é sempre o "Ready to Assign" de outubro mais o disponível negativo (vermelho) do Pagamento em outubro. Ex.: 8C, 960 − 10 = 950. Se outubro bater e novembro não, o erro está na virada, não na regra. Se outubro não bater com nenhuma coluna, anote o valor: ele ajuda a achar a regra certa.
+
+#### Primeira tentativa
 
 **Primeira tentativa na tela (2026-10-13), a refazer.** Os "pagamentos" do 8B e do 8C ficaram como saídas da Corrente **sem beneficiário e sem categoria** ("This needs a category"), e não como transferência; a conta Cartão não recebeu nada. O gasto do 8F também ficou sem categoria. Então o +10 **não foi testado**. O que a tela mostrou bate com o motor (teste `roteiro_8_primeira_tentativa_sem_transferencia`):
 - setembro: Mercado 50 gastos no cartão, Pagamento +50 / 50, "A atribuir" −50 (saldo inicial ficou em 13/10); outubro herda 50 no Pagamento;
@@ -452,11 +503,6 @@ O que anotar em cada passo:
 - 8D: atribuir 10 e gastar 10 no cartão em Mercado: Pagamento +10 / 60, "A atribuir" 940;
 - 8E: estorno de 20 no cartão em Mercado: Mercado +20 / 30, **Pagamento −20 / 30**, cartão −30, "A atribuir" 940. **Conferido**: o estorno coberto no cartão sai da categoria de pagamento (`budgeted_spending` positivo);
 - 8F como lançado (10 sem categoria no cartão): sem categoria −70, Pagamento 0 / 50 (amarelo), cartão −60, "A atribuir" 950.
-
-Contas de apoio:
-- No 8D, a atribuição sozinha já leva o "A atribuir" de outubro de 960 a 950; o gasto no cartão leva a 940 pela regra.
-- Novembro = "A atribuir" de outubro + estouro em dinheiro de outubro (o disponível negativo, em vermelho, da categoria de pagamento). Ex.: 8C, 960 − 10 = 950. Pelas alternativas, novembro muda junto com outubro; se outubro bater e novembro não, o erro está na virada, não na regra.
-- Se algum valor de outubro não bater com nenhuma coluna, anote o valor: a regra inferida e as três alternativas estão erradas, e o número ajuda a achar a certa.
 
 ## 10. Implicações para o Tostão
 
