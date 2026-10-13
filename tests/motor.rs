@@ -781,5 +781,5 @@ fn roteiro_8_pagamento_alem_da_divida_do_mes_anterior() {
     assert_eq!((c.atividade(OUT, "mercado"), c.disponivel(OUT, "mercado")), (-10_000, -10_000));
     assert_eq!(c.cat(OUT, "mercado").credit_overspent(), -10_000, "amarelo");
     assert_eq!((c.atividade(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao")), (-60_000, -10_000));
-    assert_eq!(c.a_atribuir(OUT), 950_000);
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (950_000, 940_000));
 }
