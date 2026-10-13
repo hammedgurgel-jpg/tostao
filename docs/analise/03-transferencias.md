@@ -409,6 +409,46 @@ Isso contradiz os bloqueios lidos no código (§5). A explicação mais prováve
 - 7C: "Enter Now" criou as duas pontas com a **data de hoje (13/10)**, não a da ocorrência (14/10), com memo "oi" e não compensadas. Corrente 950, Poupança 50. A agendada andou para 14/11, e a espelho de 14/11 aparece na Poupança. **Conferido** (`fireOnceWithTodaysDate`).
 - 7D: as pontas do "Enter Now" já vieram aprovadas, então não houve o que aprovar. A regra "aprovar uma aprova a outra" fica só **vista** no código. Para conferir, seria preciso uma geração automática (esperar a data).
 
+### Roteiro 8 — o +10 do pagamento além da dívida
+
+Objetivo: conferir a regra inferida do roteiro 5C (`pagamento_alem_da_divida` em `src/motor.rs`, §12):
+
+> a parte dos pagamentos do mês que deixa o cartão com saldo positivo, além do saldo positivo que ele já tinha no fim do mês anterior, vai para o "A atribuir" do mês. Ela continua saindo da categoria de pagamento. Os gastos e estornos do cartão no mês entram na conta; as transferências que saem do cartão para conta orçamentária não.
+
+Cada passo separa a regra de uma alternativa:
+- **por ordem**: o excesso é contado na hora do pagamento e nunca volta, mesmo se o cartão gastar depois no mesmo mês;
+- **só o mês**: compara os pagamentos só com os gastos do mês, sem olhar a dívida que veio do mês anterior;
+- **só pagamento**: um estorno no cartão nunca vai para o "A atribuir".
+
+Orçamento novo:
+- **Corrente** (orçamentária) com saldo inicial de 1.000 em **01/09**, classificado como "Pronto para atribuir";
+- **Cartão** (cartão de crédito), saldo 0;
+- categoria Mercado; em **setembro**, atribui 50 a Mercado.
+
+No início: "A atribuir" de setembro, outubro e novembro = 950.
+Todas as transações de outubro com data de **hoje (13/10) ou antes**: data futura vira agendada (roteiro 3F). Se a tela não deixar lançar em setembro (mês antes do início do orçamento), anote e faça só os passos 8C a 8F, partindo de cartão com saldo 0. Nesse caso, os valores esperados mudam; refaço a conta.
+
+Valores esperados pela regra (calculados com o motor). "Pagamento" é a categoria de pagamento do Cartão em **outubro**: atividade / disponível. "A atribuir" é o de outubro e o de novembro.
+
+| Passo | Ação | Corrente | Cartão | Mercado (out) | Pagamento (out) | A atribuir out / nov | Se fosse a alternativa |
+|---|---|---|---|---|---|---|---|
+| 8A | Em 15/09, gasta 50 no Cartão em Mercado | 1.000 | −50 | 0 | 0 / 50 | 950 / 950 | — (em setembro: Pagamento +50 / 50) |
+| 8B | Em 13/10, paga 50 da Corrente para o Cartão | 950 | 0 | 0 | −50 / 0 | 950 / 950 | **só o mês**: 1.000 |
+| 8C | Em 13/10, paga mais 10 da Corrente para o Cartão | 940 | +10 | 0 | −60 / −10 | **960** / 950 | (é o caso do 5C, agora com dívida de setembro) |
+| 8D | Atribui 10 a Mercado em outubro e gasta 10 no Cartão em Mercado | 940 | 0 | 10 → 0 | −50 / 0 | **940** / 940 | **por ordem**: 950 |
+| 8E | Apaga o gasto do 8D e lança no Cartão uma **entrada** de 20 em Mercado (estorno) | 940 | +30 | 30 | −80 / −30 | **970** / 940 | **só pagamento**: 960 |
+| 8F | Apaga o estorno do 8E, tira a atribuição de 10 de Mercado (volta a 0) e gasta 10 no Cartão em Mercado, sem dinheiro | 940 | 0 | −10 (crédito) | −60 / −10 | **950** / 940 | **por ordem**: 960 |
+
+O que anotar em cada passo:
+- "A atribuir" de **outubro e de novembro** (a tela de novembro pode ser vista sem lançar nada nele);
+- atividade e disponível da categoria de pagamento em outubro, e a cor (vermelho = estouro em dinheiro);
+- saldos da Corrente e do Cartão.
+
+Contas de apoio:
+- No 8D, a atribuição sozinha já leva o "A atribuir" de outubro de 960 a 950; o gasto no cartão leva a 940 pela regra.
+- Novembro (950 ou 940) não depende da regra: o acréscimo de outubro é compensado pelo estouro em dinheiro da categoria de pagamento, como no roteiro 5. Se novembro bater e outubro não, a virada está certa e só a regra do mês está errada.
+- Se algum valor de outubro não bater com nenhuma coluna, anote o valor: a regra inferida e as três alternativas estão erradas, e o número ajuda a achar a certa.
+
 ## 10. Implicações para o Tostão
 
 - **Modelo**: manter o do YNAB (duas transações com id cruzado; parte de divisão ↔ transação inteira; agendada com uma ponta só). Ele já passa pelo protocolo sem mudança e o `src/server.rs` guarda tudo sem conhecer transferências.
