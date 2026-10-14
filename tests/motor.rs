@@ -863,8 +863,8 @@ fn roteiro_9_primeira_tentativa() {
 
 #[test]
 fn roteiro_9_segunda_tentativa_previsao() {
-    // Previsão do motor para a segunda tentativa do roteiro 9 (análise 03),
-    // ainda não conferida na tela. Parte da limpeza: saldo inicial em 01/09,
+    // Segunda tentativa do roteiro 9 (análise 03), conferida na tela em
+    // 2026-10-13/14, menos a divisão entre os cartões no 9E. Parte da limpeza: saldo inicial em 01/09,
     // 50 em Mercado em setembro e a entrada sem categoria do 9B.
     const SET: u32 = 9;
     let mut r = Roteiro::novo();
@@ -926,9 +926,11 @@ fn roteiro_9_segunda_tentativa_previsao() {
     assert_eq!((c.conta("cartao"), c.conta("cartao2")), (-30_000, -70_000));
     assert_eq!((c.atividade(OUT, "farmacia"), c.disponivel(OUT, "farmacia")), (-100_000, -40_000));
     assert_eq!(c.cat(OUT, "farmacia").credit_overspent(), -40_000, "amarelo");
-    assert_eq!((c.disponivel(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao2")), (18_000, 42_000));
     assert_eq!((c.a_atribuir(SET), c.a_atribuir(OUT), c.a_atribuir(NOV)), (890_000, 880_000, 680_000));
-    assert_eq!((c.disponivel(NOV, "pagamento-cartao"), c.disponivel(NOV, "pagamento-cartao2")), (18_000, 42_000));
+    // A divisão dos 60 cobertos entre os cartões divergiu da tela (10 e 50):
+    // ver `roteiro_9e_divisao_entre_dois_cartoes`.
+    let soma = c.disponivel(OUT, "pagamento-cartao") + c.disponivel(OUT, "pagamento-cartao2");
+    assert_eq!(soma, 60_000);
 }
 
 #[test]
@@ -969,4 +971,33 @@ fn roteiro_9_segunda_tentativa_etapa_2_como_lancada() {
     assert_eq!((c.atividade(SET, "pagamento-cartao"), c.disponivel(SET, "pagamento-cartao")), (0, 0));
     assert_eq!(c.disponivel(OUT, "pagamento-cartao"), 0);
     assert_eq!((c.a_atribuir(SET), c.a_atribuir(OUT)), (950_000, 950_000));
+}
+
+#[test]
+#[ignore = "divergência da tela no 9E: a regra da divisão entre cartões ainda não foi achada"]
+fn roteiro_9e_divisao_entre_dois_cartoes() {
+    // Na tela (2026-10-14): Cartão com +10 vindo de setembro e gasto de 10 em
+    // Mercado em outubro (pagamento 0). Farmácia com 60 gasta 30 no Cartão
+    // (pagamento do Cartão 30) e depois 70 no Cartão 2. Resultado: pagamento
+    // do Cartão 10 e do Cartão 2 50 (os dois amarelos), Farmácia −40. O motor
+    // divide na proporção do gasto (18 e 42).
+    const SET: u32 = 9;
+    let mut r = Roteiro::novo();
+    r.transacao("t1").data = dia(SET, 1);
+    r.cartao("cartao");
+    r.cartao("cartao2");
+    r.orc.atribuicoes.push(Atribuicao { categoria: "mercado".into(), mes: dia(SET, 1), valor: 50_000 });
+    let gasto = r.lanca("cartao", -50_000, Some("mercado"));
+    r.transacao(&gasto).data = dia(SET, 15);
+    let pagamento = r.transfere("corrente", "cartao", 60_000, None);
+    data_das_pontas(&mut r, pagamento, dia(SET, 20));
+    r.atribui("mercado", 10_000);
+    r.lanca("cartao", -10_000, Some("mercado"));
+    r.atribui("farmacia", 60_000);
+    r.lanca("cartao", -30_000, Some("farmacia"));
+    r.lanca("cartao2", -70_000, Some("farmacia"));
+    let c = r.calcula();
+    assert_eq!((c.disponivel(OUT, "farmacia"), c.cat(OUT, "farmacia").credit_overspent()), (-40_000, -40_000));
+    assert_eq!((c.disponivel(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao2")), (10_000, 50_000));
+    assert_eq!((c.disponivel(NOV, "pagamento-cartao"), c.disponivel(NOV, "pagamento-cartao2")), (10_000, 50_000));
 }
