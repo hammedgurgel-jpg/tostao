@@ -36,6 +36,9 @@ Opções (ou variáveis de ambiente):
   --servidor <url>      TOSTAO_SERVIDOR  servidor (padrão: http://127.0.0.1:8080)
   --token <texto>       TOSTAO_TOKEN     token do servidor (para sincronizar)
 
+O plano e as contas são calculados neste aparelho, com as mudanças ainda não
+enviadas; só o `sincronizar` precisa do servidor e do token.
+
 Valores em reais: -80, 1000, 80,50 ou 1.234,56. Nomes de conta, grupo e
 categoria não diferenciam maiúsculas; use aspas se tiverem espaço.
 ";
@@ -111,7 +114,7 @@ fn executar() -> Result<(), Box<dyn std::error::Error>> {
             let a = Aparelho::criar_orcamento(&arquivo, args.arg(0, "o nome do orçamento")?)?;
             a.salvar()?;
             println!("Orçamento criado: {}", a.orcamento());
-            println!("Cópia local em {}. Rode `tostao sincronizar` para enviá-lo ao servidor.", arquivo);
+            println!("Cópia local em {arquivo}. Para dividi-lo com outros aparelhos, rode `tostao sincronizar`.");
         }
         "entrar" => {
             args.so_opcoes(&[])?;
@@ -177,20 +180,15 @@ fn executar() -> Result<(), Box<dyn std::error::Error>> {
             args.so_opcoes(&["mes"])?;
             let a = Aparelho::abrir(&arquivo)?;
             let mes = args.opcao("mes").map_or(Ok(hoje()), ler_mes)?;
-            mostrar_plano(&a, mes);
+            mostrar_plano(&a, mes)?;
         }
         "contas" => {
             args.so_opcoes(&[])?;
             let a = Aparelho::abrir(&arquivo)?;
             println!("{:<28} {:>14} {:>14}", "Conta", "Saldo", "Compensado");
-            for c in a.contas() {
+            for c in a.contas()? {
                 let nome = if c.orcamentaria { c.nome } else { format!("{} (acompanhamento)", c.nome) };
-                match c.saldo {
-                    Some((saldo, compensado)) => {
-                        println!("{nome:<28} {:>14} {:>14}", formatar_valor(saldo), formatar_valor(compensado))
-                    }
-                    None => println!("{nome:<28} {:>14} {:>14}", "—", "—"),
-                }
+                println!("{nome:<28} {:>14} {:>14}", formatar_valor(c.saldo), formatar_valor(c.saldo_compensado));
             }
             avisar_pendentes(&a);
         }
@@ -221,7 +219,7 @@ fn mudar(arquivo: &str, f: impl FnOnce(&mut Aparelho) -> Result<String, Erro>) -
 fn avisar_pendentes(a: &Aparelho) {
     let n = a.mudancas_pendentes();
     if n > 0 {
-        println!("({n} mudança(s) ainda não enviada(s); rode `tostao sincronizar`.)");
+        println!("({n} mudança(s) ainda não enviada(s) ao servidor.)");
     }
 }
 
@@ -230,12 +228,12 @@ const MESES: [&str; 12] = [
     "dezembro",
 ];
 
-fn mostrar_plano(a: &Aparelho, mes: tostao::dates::Date) {
-    let plano = a.plano(mes);
+fn mostrar_plano(a: &Aparelho, mes: tostao::dates::Date) -> Result<(), Erro> {
+    let plano = a.plano(mes)?;
     println!("Plano de {} de {}", MESES[plano.mes.month0() as usize], plano.mes.year());
     match plano.a_atribuir {
         Some(v) => println!("A atribuir: {}", formatar_valor(v)),
-        None => println!("A atribuir: — (sem cálculo do servidor para este mês; sincronize)"),
+        None => println!("A atribuir: — (nada lançado nem atribuído até este mês)"),
     }
     println!();
     println!("{:<30} {:>12} {:>12} {:>12}", "Categoria", "Atribuído", "Atividade", "Disponível");
@@ -258,4 +256,5 @@ fn mostrar_plano(a: &Aparelho, mes: tostao::dates::Date) {
         linha(s, "");
     }
     avisar_pendentes(a);
+    Ok(())
 }

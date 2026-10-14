@@ -5,7 +5,15 @@
 //! Cada mudança local sobe o conhecimento do aparelho e marca a entidade com
 //! esse valor; na sincronização vão as entidades marcadas depois do que o
 //! servidor já sabe do aparelho. O que vem do servidor substitui a cópia
-//! local, inclusive os cálculos (`be_*_calculations`), que só o servidor faz.
+//! local.
+//!
+//! O aparelho calcula sozinho: [`Aparelho::plano`] e [`Aparelho::contas`]
+//! montam o [`Orcamento`](motor::Orcamento) com as entidades vivas da cópia
+//! local, inclusive as mudanças ainda não enviadas, e chamam
+//! [`motor::calcular`]. Assim tudo, menos o `sincronizar`, funciona sem
+//! servidor. Os cálculos que o servidor manda (`be_*_calculations`) continuam
+//! sendo recebidos e guardados na cópia local, mas não são usados para
+//! mostrar nada.
 //!
 //! Escolhas daqui, **não conferidas** com o YNAB: os tipos de conta
 //! (`Checking`, `Savings`, `Cash`, `CreditCard`, `OtherAsset`), os ids fixos
@@ -22,12 +30,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use crate::api::{ApiError, ApiV1, ServerError, Transport};
-use crate::calc::{calculate_left_to_budget_for_monthly_budget, MonthCalc, MonthlyBudget};
-use crate::dates::{start_of_month, Date};
+use crate::dates::{add_months, start_of_month, Date};
 use crate::knowledge::BudgetKnowledge;
-use crate::motor::protocolo::{CALCULOS_DE_CATEGORIA, CALCULOS_DE_CONTA, CALCULOS_DO_MES, CATEGORIA_RECEITA};
+use crate::motor::protocolo::{orcamento_das_entidades, CATEGORIA_RECEITA};
+use crate::motor::{self, Calculos};
 use crate::protocol::{
-    OutgoingChangedEntities, SyncBudgetDataRequest, SyncBudgetDataResponse, SyncType, TOSTAO_SCHEMA_VERSION,
+    IncomingChangedEntities, OutgoingChangedEntities, SyncBudgetDataRequest, SyncBudgetDataResponse, SyncType, TOSTAO_SCHEMA_VERSION,
 };
 use crate::sync::{BudgetHost, BudgetSync, HandledResponse, SyncError, SyncResult};
 
@@ -253,11 +261,11 @@ pub struct GrupoNoPlano {
     pub categorias: Vec<LinhaDoPlano>,
 }
 
-/// O plano de um mês, com os cálculos que vieram do servidor.
+/// O plano de um mês, calculado no aparelho.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Plano {
     pub mes: Date,
-    /// `None` se o servidor ainda não mandou cálculo para este mês.
+    /// `None` antes do primeiro mês com transação ou atribuição.
     pub a_atribuir: Option<i64>,
     pub grupos: Vec<GrupoNoPlano>,
     /// Só quando há saídas ou saldo sem categoria.
@@ -268,8 +276,10 @@ pub struct Plano {
 pub struct LinhaDeConta {
     pub nome: String,
     pub orcamentaria: bool,
-    /// Saldo de trabalho e saldo compensado, se o servidor já os mandou.
-    pub saldo: Option<(i64, i64)>,
+    /// Saldo de trabalho.
+    pub saldo: i64,
+    /// Compensadas e reconciliadas.
+    pub saldo_compensado: i64,
 }
 
 /// Um aparelho com a cópia local no arquivo `caminho`.
@@ -506,7 +516,7 @@ impl Aparelho {
     }
 
     /// Sincronização incremental: envia as mudanças pendentes e recebe as
-    /// do servidor (com os cálculos). Grava o arquivo se der certo.
+    /// do servidor. Grava o arquivo se der certo.
     pub fn sincronizar<T: Transport>(&mut self, transport: T, token: &str) -> Result<SyncResult, Erro> {
         let mut api = ApiV1::new(transport);
         api.session_token = Some(token.to_owned());
@@ -524,44 +534,45 @@ impl Aparelho {
         Ok(resultado)
     }
 
-    /// O plano do mês, com os cálculos que vieram do servidor.
-    pub fn plano(&self, mes: Date) -> Plano {
-        let mes = start_of_month(mes);
-        let mes_de = |v: &Value| {
-            v.get("month").and_then(Value::as_str).and_then(|m| Date::parse_from_str(m.get(..10)?, "%Y-%m-%d").ok())
+    /// Calcula o orçamento com as entidades da cópia local, ao menos até
+    /// `ate` e até um mês depois do último com movimento.
+    fn calcular(&self, ate: Option<Date>) -> Result<Calculos, Erro> {
+        let todas = |tipo: &str| {
+            self.copia.entidades.get(tipo).map(|m| m.values().map(|g| g.valor.clone()).collect::<Vec<_>>())
         };
+        let entidades = IncomingChangedEntities {
+            be_accounts: todas("be_accounts"),
+            be_subcategories: todas("be_subcategories"),
+            be_monthly_budgets: todas("be_monthly_budgets"),
+            be_monthly_subcategory_budgets: todas("be_monthly_subcategory_budgets"),
+            be_transactions: todas("be_transactions"),
+            be_subtransactions: todas("be_subtransactions"),
+            ..Default::default()
+        };
+        let orcamento = orcamento_das_entidades(&entidades).map_err(|e| {
+            Erro::Valor(format!("a cópia local tem uma entidade que não dá para ler: {} {} (campo {})", e.tipo, e.id, e.campo))
+        })?;
+        let ultimo = motor::calcular(&orcamento).meses.last().map(|m| add_months(m.mes, 1));
+        let ultimo_mes = ultimo.max(ate.map(start_of_month));
+        Ok(motor::calcular(&motor::Orcamento { ultimo_mes, ..orcamento }))
+    }
+
+    /// O plano do mês, calculado aqui com a cópia local.
+    pub fn plano(&self, mes: Date) -> Result<Plano, Erro> {
+        let mes = start_of_month(mes);
         let n = |v: &Value, campo: &str| v.get(campo).and_then(Value::as_i64).unwrap_or(0);
+        let calculos = self.calcular(Some(mes))?;
+        let do_mes = calculos.mes(mes);
 
-        let meses: Vec<(Date, MonthCalc)> = self
-            .vivas(CALCULOS_DO_MES)
-            .filter_map(|v| {
-                let calc = MonthCalc {
-                    immediate_income: n(v, "immediate_income"),
-                    additional_to_be_budgeted: n(v, "additional_to_be_budgeted"),
-                    budgeted: n(v, "budgeted"),
-                    over_spent: n(v, "over_spent"),
-                    available_to_budget: n(v, "available_to_budget"),
-                };
-                Some((mes_de(v)?, calc))
-            })
-            .collect();
-        let todos: Vec<MonthlyBudget<'_, Date>> =
-            meses.iter().map(|(m, c)| MonthlyBudget { month: *m, calculation: Some(c) }).collect();
-        let a_atribuir =
-            todos.iter().find(|m| m.month == mes).map(|m| calculate_left_to_budget_for_monthly_budget(m, &todos));
-
-        let do_mes = self.vivas(CALCULOS_DO_MES).find(|v| mes_de(v) == Some(mes));
+        let a_atribuir = do_mes.map(|m| m.a_atribuir);
         let sem_categoria = do_mes
-            .map(|v| {
-                let atividade = n(v, "uncategorized_cash_outflows") + n(v, "uncategorized_credit_outflows");
-                LinhaDoPlano { nome: "Sem categoria".into(), atribuido: 0, atividade, disponivel: n(v, "uncategorized_balance") }
+            .map(|m| {
+                let s = &m.sem_categoria;
+                let atividade = s.cash_outflows.unwrap_or(0) + s.credit_outflows.unwrap_or(0);
+                LinhaDoPlano { nome: "Sem categoria".into(), atribuido: 0, atividade, disponivel: s.balance.unwrap_or(0) }
             })
             .filter(|l| l.atividade != 0 || l.disponivel != 0);
 
-        let calculo_da = |categoria: &str| {
-            self.vivas(CALCULOS_DE_CATEGORIA)
-                .find(|v| mes_de(v) == Some(mes) && v.get("entities_subcategory_id").and_then(Value::as_str) == Some(categoria))
-        };
         let mut grupos: Vec<&Value> = self.vivas("be_master_categories").filter(|g| g["id"] != GRUPO_INTERNO).collect();
         grupos.sort_by_key(|g| (n(g, "sortable_index"), g["name"].as_str().unwrap_or_default().to_owned()));
         let grupos = grupos
@@ -574,12 +585,13 @@ impl Aparelho {
                     .into_iter()
                     .map(|c| {
                         let nome = c["name"].as_str().unwrap_or_default().to_owned();
-                        match calculo_da(c["id"].as_str().unwrap_or_default()) {
-                            Some(v) => LinhaDoPlano {
+                        match do_mes.and_then(|m| m.categoria(c["id"].as_str().unwrap_or_default())) {
+                            Some(calc) => LinhaDoPlano {
                                 nome,
-                                atribuido: n(v, "budgeted"),
-                                atividade: n(v, "cash_outflows") + n(v, "credit_outflows") - n(v, "budgeted_spending"),
-                                disponivel: n(v, "balance"),
+                                atribuido: calc.budgeted,
+                                atividade: calc.cash_outflows.unwrap_or(0) + calc.credit_outflows.unwrap_or(0)
+                                    - calc.budgeted_spending,
+                                disponivel: calc.balance.unwrap_or(0),
                             },
                             None => LinhaDoPlano { nome, atribuido: 0, atividade: 0, disponivel: 0 },
                         }
@@ -589,26 +601,26 @@ impl Aparelho {
             })
             .collect();
 
-        Plano { mes, a_atribuir, grupos, sem_categoria }
+        Ok(Plano { mes, a_atribuir, grupos, sem_categoria })
     }
 
-    /// As contas, com os saldos que vieram do servidor.
-    pub fn contas(&self) -> Vec<LinhaDeConta> {
+    /// As contas, com os saldos calculados aqui com a cópia local.
+    pub fn contas(&self) -> Result<Vec<LinhaDeConta>, Erro> {
+        let calculos = self.calcular(None)?;
         let mut contas: Vec<&Value> = self.vivas("be_accounts").collect();
         contas.sort_by_key(|c| c.get("sortable_index").and_then(Value::as_i64).unwrap_or(0));
-        contas
+        Ok(contas
             .into_iter()
             .map(|c| {
-                let saldo = self.vivas(CALCULOS_DE_CONTA).find(|s| s["entities_account_id"] == c["id"]).map(|s| {
-                    (s["balance"].as_i64().unwrap_or(0), s["cleared_balance"].as_i64().unwrap_or(0))
-                });
+                let saldo = calculos.saldo(c["id"].as_str().unwrap_or_default());
                 LinhaDeConta {
                     nome: c["account_name"].as_str().unwrap_or_default().to_owned(),
                     orcamentaria: c.get("on_budget").and_then(Value::as_bool).unwrap_or(true),
-                    saldo,
+                    saldo: saldo.map_or(0, |s| s.saldo),
+                    saldo_compensado: saldo.map_or(0, |s| s.saldo_compensado),
                 }
             })
-            .collect()
+            .collect())
     }
 }
 

@@ -11,7 +11,8 @@ Por enquanto há dois programas de linha de comando, sem interface gráfica:
   recebe as mudanças de cada aparelho, recalcula o orçamento com o motor e
   devolve aos aparelhos as mudanças dos outros e os cálculos.
 - **`tostao`**: um aparelho. Guarda a cópia local do orçamento num arquivo
-  JSON, faz mudanças nela e sincroniza com o servidor.
+  JSON, faz mudanças nela, calcula o plano e os saldos com o mesmo motor e,
+  quando houver servidor, sincroniza com ele.
 
 ## Compilar
 
@@ -28,6 +29,22 @@ ponta, que sobe o servidor e roda o roteiro 1 por dois aparelhos):
 ```powershell
 cargo test
 ```
+
+## Usar só num aparelho, sem servidor
+
+O aparelho calcula sozinho: o `plano` e o `contas` saem do motor rodando
+sobre a cópia local, inclusive as mudanças ainda não enviadas. Todos os
+comandos, menos o `sincronizar`, funcionam sem servidor e sem token:
+
+```powershell
+Set-Alias tostao .	argetelease	ostao.exe
+tostao criar-orcamento "Família"
+tostao criar-conta Corrente --tipo corrente
+tostao lancar Corrente 1000 --categoria "A atribuir"
+tostao plano
+```
+
+O servidor só é preciso para dividir o orçamento entre aparelhos.
 
 ## Subir o servidor
 
@@ -56,7 +73,7 @@ Não há TLS: para usar de outra máquina (por exemplo, pelo Tailscale), passe
 ## Usar o cliente
 
 Em outro terminal, diga onde está o servidor e qual é o token (ou passe
-`--servidor` e `--token` em cada comando):
+`--servidor` e `--token` em cada comando; só o `sincronizar` os usa):
 
 ```powershell
 $env:TOSTAO_SERVIDOR = "http://127.0.0.1:8080"
@@ -77,7 +94,7 @@ o padrão é `tostao-aparelho.json` na pasta atual.
 | `criar-categoria <nome> --grupo <grupo>` | cria uma categoria |
 | `atribuir <categoria> <valor> [--mes AAAA-MM]` | atribui o valor à categoria no mês (substitui o anterior) |
 | `lancar <conta> <valor> [--categoria <nome> \| --transferir-para <conta>] [--data AAAA-MM-DD]` | lança uma transação; saída é negativa; sem `--categoria` fica sem categoria; `--categoria "A atribuir"` é receita do mês; `--transferir-para` cria as duas pontas |
-| `sincronizar` | envia as mudanças deste aparelho e recebe as do servidor, com os cálculos |
+| `sincronizar` | envia as mudanças deste aparelho e recebe as do servidor (precisa do servidor e do token) |
 | `plano [--mes AAAA-MM]` | mostra o "A atribuir" e as categorias com atribuído, atividade e disponível |
 | `contas` | mostra o saldo de trabalho e o saldo compensado de cada conta |
 | `info` | mostra o id do orçamento, o do aparelho e quantas mudanças faltam enviar |
@@ -86,9 +103,9 @@ Valores em reais: `-80`, `1000`, `80,50`, `1.234,56`. Nomes de conta, grupo e
 categoria não diferenciam maiúsculas; use aspas se tiverem espaço. Sem
 `--mes` ou `--data`, vale o dia de hoje (UTC).
 
-As mudanças ficam só no aparelho até o `sincronizar`. O `plano` e o `contas`
-mostram os cálculos que vieram do servidor na última sincronização: depois
-de mudar algo, sincronize para ver o efeito.
+As mudanças ficam só no aparelho até o `sincronizar`, mas o `plano` e o
+`contas` já as levam em conta: são calculados no aparelho, com a cópia
+local. O que os outros aparelhos mudaram só aparece depois de sincronizar.
 
 ## Exemplo completo: o roteiro 1 por dois aparelhos
 
@@ -106,9 +123,9 @@ tostao --arquivo a.json criar-grupo "Dia a dia"
 tostao --arquivo a.json criar-categoria Mercado --grupo "Dia a dia"
 tostao --arquivo a.json criar-categoria Lazer --grupo "Dia a dia"
 tostao --arquivo a.json lancar Corrente 1000 --categoria "A atribuir" --data 2026-10-13
-tostao --arquivo a.json sincronizar
 tostao --arquivo a.json plano --mes 2026-10
 #   A atribuir: 1.000,00
+tostao --arquivo a.json sincronizar
 
 # Aparelho B entra no mesmo orçamento.
 tostao --arquivo b.json entrar <id-do-orcamento>
@@ -117,11 +134,11 @@ tostao --arquivo b.json sincronizar
 # 1A, em B: atribui 50 a Mercado e gasta 80 na corrente.
 tostao --arquivo b.json atribuir Mercado 50 --mes 2026-10
 tostao --arquivo b.json lancar Corrente -80 --categoria Mercado --data 2026-10-13
-tostao --arquivo b.json sincronizar
 tostao --arquivo b.json plano --mes 2026-10
 #   A atribuir: 950,00; Mercado 50,00 / -80,00 / -30,00
 tostao --arquivo b.json plano --mes 2026-11
 #   A atribuir: 920,00
+tostao --arquivo b.json sincronizar
 
 # 1B, 1C e 1D, em A: 40 na corrente sem categoria, 60 no cartão em Lazer,
 # 25 no cartão sem categoria.
@@ -141,7 +158,9 @@ tostao --arquivo b.json contas
 #   Corrente 880,00; Cartão -85,00
 ```
 
-É o que o teste [tests/ponta_a_ponta.rs](tests/ponta_a_ponta.rs) faz.
+É o que o teste [tests/ponta_a_ponta.rs](tests/ponta_a_ponta.rs) faz. O
+mesmo roteiro num aparelho só, sem servidor, está em
+[tests/aparelho.rs](tests/aparelho.rs).
 
 ## Onde ficam os arquivos
 
@@ -171,7 +190,8 @@ O que não foi observado e foi escolhido aqui:
   `be_monthly_subcategory_budget_calculations` e `be_account_calculations`
   vêm da captura de rede, mas os campos e os ids não foram vistos. O servidor
   recalcula o orçamento inteiro a cada lote aceito, do primeiro mês com
-  transação ou atribuição até um mês depois do último.
+  transação ou atribuição até um mês depois do último. O aparelho guarda os
+  cálculos que recebe, mas não os usa: calcula o plano e os saldos sozinho.
 - **Entidades criadas pelo cliente** ([src/aparelho.rs](src/aparelho.rs)): os
   tipos de conta (`Checking`, `Savings`, `Cash`, `CreditCard`, `OtherAsset`),
   os ids fixos do grupo interno, da categoria de receita e do grupo de
