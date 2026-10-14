@@ -10,6 +10,9 @@ use serde_json::Value;
 /// Rota única usada por todas as operações do catálogo.
 pub const CATALOG_PATH: &str = "/api/v1/catalog";
 
+/// Versão de esquema que o servidor e o aparelho do Tostão usam.
+pub const TOSTAO_SCHEMA_VERSION: i64 = 1;
+
 /// Cabeçalho de resposta lido como versão do servidor.
 pub const SERVER_VERSION_HEADER: &str = "X-Tostao-Server-Version";
 

@@ -8,8 +8,11 @@
 //! passiva das respostas de `/api/v1/catalog`.
 //!
 //! Não observado, portanto não reproduzido:
-//! - a codificação do corpo da requisição no fio (fica no [`api::Transport`]);
+//! - a codificação do corpo da requisição no fio (fica no [`api::Transport`];
+//!   o [`http`] escolhe JSON, sem conferir);
 //! - o nome do cabeçalho que leva `apiVersionHeader = "2026-01-01"`;
+//! - os campos e os ids das entidades `be_*_calculations` (o servidor do
+//!   Tostão escolhe os seus em [`motor::protocolo::entidades_dos_calculos`]);
 //! - a ordem dos campos nas respostas do servidor;
 //! - como o servidor do YNAB soma transações em `be_*_calculations`; o
 //!   [`motor`] faz essa soma com as regras conferidas na tela
@@ -18,10 +21,12 @@
 //! `roundMilliDollars` está lido: `Math.round` por padrão, passo de 10 milésimos
 //! para o real (ver [`calc::round_to_currency`]).
 
+pub mod aparelho;
 pub mod api;
 pub mod calc;
 pub mod dates;
 pub mod goals;
+pub mod http;
 pub mod knowledge;
 pub mod motor;
 pub mod protocol;
