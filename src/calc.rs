@@ -189,8 +189,9 @@ pub fn month_over_spent<'a>(
 /// das saídas é `budgeted_credit_outflows` menos os estornos. Conferido no
 /// roteiro 12: Farmácia com estornos de 10 e 50 em dois cartões e saída de
 /// 30 num terceiro deu −10, −50 e +30 nos pagamentos, não o líquido de 30
-/// tirado do maior estorno. Com a categoria estourada e estornos no mesmo
-/// mês, segue da mesma regra, mas não foi visto.
+/// tirado do maior estorno. Com a categoria estourada, os estornos chegam
+/// aqui já tratados pelo motor (roteiro 13, `estornos_na_categoria_estourada`
+/// em `src/motor.rs`).
 pub fn funded_by_card(budgeted_credit_outflows: i64, outflows: &[i64]) -> Vec<i64> {
     let refunds: i64 = outflows.iter().filter(|&&v| v > 0).sum();
     let mut funded: Vec<i64> = outflows.iter().map(|&v| v.max(0)).collect();

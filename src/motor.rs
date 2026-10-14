@@ -411,10 +411,22 @@ pub fn calcular(orcamento: &Orcamento) -> Calculos {
 
         // Gasto coberto de cada categoria, dividido entre os cartões.
         let mut coberto_no_cartao: HashMap<&str, i64> = HashMap::new();
+        let mut positivo: HashMap<&str, i64> = de_pagamento
+            .iter()
+            .map(|(_, cartao)| {
+                let movimento = cartoes.get(&(*cartao, mes)).copied().unwrap_or_default();
+                let anterior = saldos.no_fim_de(cartao, add_months(mes, -1));
+                (*cartao, saldo_positivo_novo(anterior, movimento) - pagamento_alem_da_divida(anterior, movimento))
+            })
+            .collect();
         for (n, calc) in normais.iter().zip(&calculadas) {
             let Some(s) = saidas.get(&(n.id.as_str(), mes)) else { continue };
-            let gastos: Vec<i64> = s.no_credito.iter().map(|(_, valor)| *valor).collect();
-            let cobertos = funded_by_card(calc.calculo.budgeted_credit_outflows, &gastos);
+            let mut gastos: Vec<i64> = s.no_credito.iter().map(|(_, valor)| *valor).collect();
+            let mut coberto = calc.calculo.budgeted_credit_outflows;
+            if calc.calculo.balance.unwrap_or(0) < 0 {
+                coberto -= estornos_na_categoria_estourada(&s.no_credito, &mut gastos, &mut positivo);
+            }
+            let cobertos = funded_by_card(coberto, &gastos);
             for ((cartao, _), coberto) in s.no_credito.iter().zip(cobertos) {
                 *coberto_no_cartao.entry(cartao.as_str()).or_default() += coberto;
             }
@@ -528,6 +540,37 @@ fn gasto_coberto_limitado(coberto: i64, saldo_anterior: i64, mes: Cartao, excess
     }
     let so_positivo = saldo_positivo_novo(saldo_anterior, mes) - excesso;
     (coberto - so_positivo).max(0)
+}
+
+/// Estornos no crédito de uma categoria estourada: nenhum sai do pagamento
+/// do próprio cartão (zera o valor em `gastos`), e só a parte que deixa o
+/// cartão positivo (`positivo`, consumido aqui) cobre as saídas da
+/// categoria. Devolve quanto cobre (≥ 0).
+///
+/// Conferido no roteiro 13 da análise 03 (Farmácia com 60 e saída de 100
+/// no Cartão 3): o estorno de 10 no Cartão, que tinha dívida, não mexeu em
+/// pagamento nenhum (Cartão 40, Cartão 3 60); o de 20 no Cartão 2, que
+/// ficou positivo, passou para o pagamento do Cartão 3 (80). Com a
+/// categoria sem estouro, cada estorno sai do pagamento do próprio cartão
+/// (roteiro 12, [`funded_by_card`]). Regra tirada de dois passos; a parte
+/// que reduz a dívida pode ter outra explicação.
+fn estornos_na_categoria_estourada(
+    no_credito: &[(String, i64)],
+    gastos: &mut [i64],
+    positivo: &mut HashMap<&str, i64>,
+) -> i64 {
+    let mut cobre = 0;
+    for ((cartao, _), valor) in no_credito.iter().zip(gastos.iter_mut()) {
+        if *valor > 0 {
+            if let Some(p) = positivo.get_mut(cartao.as_str()) {
+                let parte = (*valor).min(*p).max(0);
+                *p -= parte;
+                cobre += parte;
+            }
+            *valor = 0;
+        }
+    }
+    cobre
 }
 
 /// Quanto de cada saída no cartão (pelo índice em `lancamentos`, ≥ 0) foi

@@ -1260,3 +1260,41 @@ fn roteiro_12_conferido() {
     assert_eq!(pagamentos(&c, NOV), (30_000, 0, 30_000));
     assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (740_000, 540_000));
 }
+
+#[test]
+fn roteiro_13_conferido() {
+    // Conferido na tela em 2026-10-14 (análise 03, roteiro 13): a Farmácia
+    // estoura no crédito com estornos no mesmo mês. Parte do fim do 12,
+    // sem o estorno de 50 no Cartão 2 e sem a saída de 30 no Cartão 3.
+    let pagamentos = |c: &Calculos, m: u32| {
+        let p = |k: &str| c.disponivel(m, &format!("pagamento-{k}"));
+        (p("cartao"), p("cartao2"), p("cartao3"))
+    };
+    let mut r = roteiro_10_partida();
+    r.atribui("mercado", 140_000);
+    let m = r.lanca("cartao", -40_000, Some("mercado"));
+    r.transacao(&m).data = dia(OUT, 14);
+    farmacia_14(&mut r, "cartao", 10_000);
+    let c = r.calcula();
+    assert_eq!((c.conta("cartao"), c.conta("cartao2"), c.conta("cartao3")), (-30_000, 0, 0));
+    assert_eq!((c.disponivel(OUT, "farmacia"), pagamentos(&c, OUT)), (70_000, (30_000, 0, 0)));
+
+    // 13A: saída de 100 no Cartão 3. O estorno do Cartão (com dívida) não
+    // mexe em pagamento nenhum: só os 60 da Farmácia cobrem a saída.
+    farmacia_14(&mut r, "cartao3", -100_000);
+    let c = r.calcula();
+    let farmacia = c.cat(OUT, "farmacia");
+    assert_eq!((c.atividade(OUT, "farmacia"), farmacia.balance, farmacia.credit_overspent()), (-90_000, Some(-30_000), -30_000), "amarelo");
+    assert_eq!(pagamentos(&c, OUT), (40_000, 0, 60_000));
+    assert_eq!(pagamentos(&c, NOV), (40_000, 0, 60_000));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV), c.disponivel(NOV, "farmacia")), (740_000, 540_000, 0));
+
+    // 13B: estorno de 20 no Cartão 2, que fica positivo: cobre 20 da saída.
+    farmacia_14(&mut r, "cartao2", 20_000);
+    let c = r.calcula();
+    assert_eq!(c.conta("cartao2"), 20_000);
+    assert_eq!((c.atividade(OUT, "farmacia"), c.disponivel(OUT, "farmacia")), (-70_000, -10_000));
+    assert_eq!(pagamentos(&c, OUT), (40_000, 0, 80_000));
+    assert_eq!(pagamentos(&c, NOV), (40_000, 0, 80_000));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (740_000, 540_000));
+}

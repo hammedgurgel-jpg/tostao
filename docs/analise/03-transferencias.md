@@ -1195,6 +1195,15 @@ Iguais nas três: Ready to Assign 740 / 540. O estorno no Cartão 2 não sai do 
 
 Mande uma captura do plano de outubro e de novembro e da tela All Accounts no fim de cada passo.
 
+#### Conferência (2026-10-14)
+
+Teste `roteiro_13_conferido`.
+- **Passo 0**: Cartão −30, Cartão 2 0, Cartão 3 0; Farmácia 60 / +10 / 70; Pagamento do Cartão 30, os outros 0; Ready to Assign 740. **Conferido.**
+- **13A**: Cartão 3 −100; Farmácia 60 / −90 / **−30** (amarelo); **Pagamento do Cartão 40, do Cartão 2 0 e do Cartão 3 60** (amarelo); Ready to Assign 740 / 540; novembro com 40, 0 e 60, Farmácia 0. **Bate com N**; B (30 / 70) e D (30 / 60) descartadas. O estorno de 10 no Cartão, que tem dívida, não saiu do pagamento dele (no 12 saiu) e também não cobriu a saída do Cartão 3.
+- **13B**: Cartão 2 **+20**; Farmácia 60 / −70 / **−10** (amarelo); **Pagamento do Cartão 40, do Cartão 2 0 e do Cartão 3 80** (amarelo); Ready to Assign 740 / 540; novembro com 40, 0 e 80. **Nenhuma candidata bateu** (B 90, N e D 60). O estorno de 20, que deixou o Cartão 2 positivo, cobriu 20 da saída do Cartão 3.
+- **Regra que fecha o 12 e o 13**: com a categoria **sem estouro**, cada estorno sai inteiro do pagamento do próprio cartão (roteiro 12). Com a categoria **estourada**, nenhum estorno sai do pagamento do próprio cartão. Só a parte que deixa o cartão positivo cobre as saídas da categoria, junto com o dinheiro dela; a parte que reduz a dívida não cobre nada. A soma confere: 13B, pagamentos 120 = dívida 130 − estouro 10.
+- **Motor ajustado**: `estornos_na_categoria_estourada` em `src/motor.rs`, chamada antes de `funded_by_card` quando o disponível da categoria fica negativo. A regra saiu de dois passos. Ela fecha os números, mas a parte "o estorno que reduz a dívida não cobre nada" pode ter outra explicação, e outro caso pode separar.
+
 ## 10. Implicações para o Tostão
 
 - **Modelo**: manter o do YNAB (duas transações com id cruzado; parte de divisão ↔ transação inteira; agendada com uma ponta só). Ele já passa pelo protocolo sem mudança e o `src/server.rs` guarda tudo sem conhecer transferências.
