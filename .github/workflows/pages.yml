@@ -1,0 +1,43 @@
+name: Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  pages: write
+  id-token: write
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar target wasm32
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Instalar wasm-bindgen-cli
+        run: cargo install --locked wasm-bindgen-cli --version 0.2.129
+
+      - name: Gerar web/pkg (núcleo wasm)
+        shell: pwsh
+        run: ./web/construir.ps1
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
