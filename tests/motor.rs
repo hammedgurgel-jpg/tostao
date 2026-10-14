@@ -1209,3 +1209,54 @@ fn roteiro_11_conferido() {
     assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (880_000, 680_000));
     assert_eq!((pagamento(&c, NOV, "cartao3"), c.disponivel(NOV, "farmacia")), (10_000, 30_000));
 }
+
+#[test]
+fn roteiro_12_conferido() {
+    // Conferido na tela em 2026-10-14 (análise 03, roteiro 12): estornos na
+    // Farmácia em dois cartões e uma saída num terceiro. Cada transação fica
+    // inteira no pagamento do próprio cartão; o estorno num cartão sem dívida
+    // não sai do pagamento. Depois da limpeza, o TESTE é o ponto de partida
+    // do roteiro 10.
+    const SET: u32 = 9;
+    let pagamento = |c: &Calculos, m: u32, cartao: &str| c.disponivel(m, &format!("pagamento-{cartao}"));
+    let pagamentos = |c: &Calculos, m: u32| (pagamento(c, m, "cartao"), pagamento(c, m, "cartao2"), pagamento(c, m, "cartao3"));
+    let mut r = roteiro_10_partida();
+
+    // Preparo: Mercado com 150 em outubro, 100 no Cartão 2 e 40 no Cartão.
+    r.atribui("mercado", 140_000);
+    let m1 = r.lanca("cartao2", -100_000, Some("mercado"));
+    r.transacao(&m1).data = dia(OUT, 14);
+    let m2 = r.lanca("cartao", -40_000, Some("mercado"));
+    r.transacao(&m2).data = dia(OUT, 14);
+    let c = r.calcula();
+    assert_eq!(pagamentos(&c, OUT), (40_000, 100_000, 0));
+    assert_eq!((c.a_atribuir(SET), c.a_atribuir(OUT), c.a_atribuir(NOV)), (750_000, 740_000, 540_000));
+
+    // 12A: estornos de 10 no Cartão e de 50 no Cartão 2.
+    farmacia_14(&mut r, "cartao", 10_000);
+    farmacia_14(&mut r, "cartao2", 50_000);
+    let c = r.calcula();
+    assert_eq!(pagamentos(&c, OUT), (30_000, 50_000, 0));
+    assert_eq!(c.disponivel(OUT, "farmacia"), 120_000);
+
+    // 12B: saída de 30 no Cartão 3. Os estornos não se compensam com ela.
+    farmacia_14(&mut r, "cartao3", -30_000);
+    let c = r.calcula();
+    assert_eq!((c.conta("cartao"), c.conta("cartao2"), c.conta("cartao3")), (-30_000, -50_000, -30_000));
+    assert_eq!((c.atividade(OUT, "farmacia"), c.disponivel(OUT, "farmacia")), (30_000, 90_000));
+    assert_eq!((c.atividade(OUT, "mercado"), c.disponivel(OUT, "mercado")), (-150_000, 0));
+    assert_eq!(pagamentos(&c, OUT), (30_000, 50_000, 30_000));
+    assert_eq!(pagamentos(&c, NOV), (30_000, 50_000, 30_000));
+    assert_eq!(c.mes(dia(OUT, 1)).unwrap().sem_categoria.balance, Some(-200_000));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV), c.disponivel(NOV, "farmacia")), (740_000, 540_000, 90_000));
+
+    // 12C: sem o gasto de Mercado, o Cartão 2 fica positivo e o estorno dele
+    // não sai do pagamento.
+    r.remove(&m1);
+    let c = r.calcula();
+    assert_eq!(c.conta("cartao2"), 50_000);
+    assert_eq!((c.atividade(OUT, "mercado"), c.disponivel(OUT, "mercado")), (-50_000, 100_000));
+    assert_eq!(pagamentos(&c, OUT), (30_000, 0, 30_000));
+    assert_eq!(pagamentos(&c, NOV), (30_000, 0, 30_000));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (740_000, 540_000));
+}

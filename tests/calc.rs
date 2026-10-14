@@ -197,6 +197,8 @@ fn credit_card_payment_collects_funded_spending_and_pays_out() {
     // maior gasto é coberto primeiro: nada neste cartão.
     assert_eq!(funded_by_card(-6_000, &[-4_000, -6_000]), vec![0, -6_000]);
     assert_eq!(funded_by_card(-8_000, &[-4_000, -6_000]), vec![-2_000, -6_000]);
+    // Estornos de 10 e 50 e saída de 30 (roteiro 12): cada um inteiro no seu cartão.
+    assert_eq!(funded_by_card(30_000, &[10_000, 50_000, -30_000]), vec![10_000, 50_000, -30_000]);
     // Outra categoria, toda neste cartão e toda coberta.
     let funded = -3_000;
 

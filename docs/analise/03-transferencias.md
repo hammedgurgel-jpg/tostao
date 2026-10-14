@@ -1134,6 +1134,14 @@ Iguais nas quatro: Farmácia 60 / +30 / 90 (Nov 90); Mercado 150 / −150 / 0; R
 
 Iguais nas quatro: Farmácia 60 / +30 / 90; Ready to Assign 740 / 540. O Cartão 2 fica positivo, então o estorno dele não sai do pagamento (limite do roteiro 8 e do 10D). No M, os 30 do líquido vão para o estorno do Cartão 2 e ficam presos no limite; se o 12B der M e aqui der 30 no Cartão, o que o limite segura passa para o estorno seguinte. Se o Pagamento do Cartão 2 der −50 (vermelho), o limite não vale quando a categoria tem estornos em vários cartões.
 
+#### Conferência (2026-10-14)
+
+Teste `roteiro_12_conferido`. Lançado pelo usuário; vieram capturas do fim do 12B e do fim do 12C (o 0, o preparo e o 12A não foram capturados à parte, mas o estado final os confirma: o pagamento de setembro do Cartão 3 sumiu e a Corrente ficou em 740).
+- **12B**: Cartão −30, Cartão 2 −50, Cartão 3 −30. Outubro: Farmácia 60 / +30 / 90, Mercado 150 / −150 / 0, **Pagamento do Cartão 30, do Cartão 2 50 e do Cartão 3 30** (verdes), Ready to Assign **740**; novembro com 30, 50 e 30, Farmácia 90, Ready to Assign **540**. Setembro: Ready to Assign 750 (890 − 140 atribuídos a mais em outubro). **Bate com B**; M (40 / 70 / 0), O (30 / 80 / 0) e P (35 / 75 / 0) descartadas.
+- **12C**: Cartão 2 **+50**, e o cabeçalho dele mostrou Payment 0. Outubro: Mercado 150 / −50 / 100, Farmácia 90, **Pagamento do Cartão 30, do Cartão 2 0 e do Cartão 3 30**, Ready to Assign 740; novembro com 30, 0 e 30, Ready to Assign 540. **Bate com B** e com o limite do roteiro 8 por cartão.
+- **Regra**: na categoria, os estornos no crédito **não se compensam** com as saídas. Cada estorno sai inteiro do pagamento do próprio cartão (até o limite de `gasto_coberto_limitado`), e cada saída coberta passa inteira para o pagamento do seu. A soma dos pagamentos fica igual à dívida dos cartões (12B: 30 + 50 + 30).
+- **Motor ajustado**: `funded_by_card` em `src/calc.rs` dá a cada estorno o valor inteiro, e o gasto coberto (o `budgeted_credit_outflows` menos os estornos) vai para as saídas, da maior para a menor. Com a categoria estourada e estornos no mesmo mês, a regra é a mesma, mas esse caso **não foi visto**.
+
 ## 10. Implicações para o Tostão
 
 - **Modelo**: manter o do YNAB (duas transações com id cruzado; parte de divisão ↔ transação inteira; agendada com uma ponta só). Ele já passa pelo protocolo sem mudança e o `src/server.rs` guarda tudo sem conhecer transferências.

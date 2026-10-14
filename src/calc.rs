@@ -182,17 +182,24 @@ pub fn month_over_spent<'a>(
 /// estouro fica nas menores. Ex.: 60 cobertos de 10 + 90 ficam 0 e 60; de
 /// 40 + 40 num cartão e 70 no outro, ficam 0, 0 e 60 (11B: a ordem é por
 /// transação, não pela soma do cartão). No empate, a lançada antes é
-/// coberta primeiro (11C). Um estorno coberto (> 0) vai do maior estorno
-/// para o menor, pela mesma regra (não visto).
+/// coberta primeiro (11C).
+///
+/// Os estornos (entradas no crédito, > 0) não se compensam com as saídas:
+/// cada um sai inteiro do pagamento do próprio cartão, e o gasto coberto
+/// das saídas é `budgeted_credit_outflows` menos os estornos. Conferido no
+/// roteiro 12: Farmácia com estornos de 10 e 50 em dois cartões e saída de
+/// 30 num terceiro deu −10, −50 e +30 nos pagamentos, não o líquido de 30
+/// tirado do maior estorno. Com a categoria estourada e estornos no mesmo
+/// mês, segue da mesma regra, mas não foi visto.
 pub fn funded_by_card(budgeted_credit_outflows: i64, outflows: &[i64]) -> Vec<i64> {
-    let mut funded = vec![0; outflows.len()];
-    let sign = if budgeted_credit_outflows < 0 { -1 } else { 1 };
-    let mut order: Vec<usize> = (0..outflows.len()).filter(|&i| outflows[i] * sign > 0).collect();
-    order.sort_by_key(|&i| -(outflows[i] * sign));
-    let mut rest = budgeted_credit_outflows * sign;
+    let refunds: i64 = outflows.iter().filter(|&&v| v > 0).sum();
+    let mut funded: Vec<i64> = outflows.iter().map(|&v| v.max(0)).collect();
+    let mut order: Vec<usize> = (0..outflows.len()).filter(|&i| outflows[i] < 0).collect();
+    order.sort_by_key(|&i| outflows[i]);
+    let mut rest = refunds - budgeted_credit_outflows;
     for i in order {
-        let part = rest.min(outflows[i] * sign);
-        funded[i] = part * sign;
+        let part = rest.min(-outflows[i]).max(0);
+        funded[i] = -part;
         rest -= part;
     }
     funded

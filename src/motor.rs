@@ -519,7 +519,9 @@ fn saldo_positivo_novo(saldo_anterior: i64, mes: Cartao) -> i64 {
 /// dívida de 50 tirou 20 do pagamento; com cartão em 0 e sem pagamento no
 /// mês, não tirou nada; depois de pagar além da dívida, tirou 20 e o
 /// "A atribuir" subiu 20) e no 10D (cartão com +20 de setembro, estorno de
-/// 10 em outubro: não tirou nada).
+/// 10 em outubro: não tirou nada). Com estornos em vários cartões, vale por
+/// cartão (roteiro 12C: o estorno de 50 no cartão que ficou positivo não
+/// tirou nada; o de 10 no cartão com dívida tirou 10).
 fn gasto_coberto_limitado(coberto: i64, saldo_anterior: i64, mes: Cartao, excesso: i64) -> i64 {
     if coberto <= 0 {
         return coberto;
