@@ -1043,6 +1043,97 @@ Conclusões:
 - **No mesmo dia, o crédito trazido vai para a maior saída** (11D), como o motor já fazia a partir do 9E. A saída que perde o crédito volta a estourar no crédito (amarelo).
 - No navegador, a transação nova lançada pela tela **All Accounts** trocando a conta no campo Account **não é gravada**: aparece na lista, mas o saldo não muda e ela some ao recarregar (o YNAB dá erro `deviceAttributes` no console). Pela página da conta, grava. Recarregar a página logo depois de salvar também pode perder a transação.
 
+### Roteiro 12 — estorno coberto em vários cartões
+
+**Para que serve.** Quando as entradas no crédito (estornos) de uma categoria somam mais do que as saídas no crédito do mês, a diferença é um "estorno coberto" (`budgeted_credit_outflows` > 0) e sai das categorias de pagamento. Os roteiros 10 e 11 acharam como o **gasto** coberto se divide entre os cartões (a maior transação primeiro). Um **estorno** coberto em mais de um cartão nunca foi visto. O motor usa a mesma ordem do gasto (`funded_by_card`). Regras candidatas (as previsões saem de um teste temporário que implementou cada uma):
+- **M — o maior estorno primeiro** (o motor hoje): o líquido da categoria (estornos − saídas) sai do pagamento dos cartões dos estornos, do maior estorno para o menor. As saídas da categoria no crédito não passam nada para o pagamento do cartão delas.
+- **O — ordem de lançamento**: como o M, mas o estorno lançado antes vem primeiro. Neste roteiro coincide com "o menor primeiro".
+- **P — proporção**: o líquido se divide na proporção dos estornos.
+- **B — cada transação no próprio cartão**: cada estorno sai inteiro do pagamento do seu cartão, e cada saída passa inteira para o pagamento do seu.
+
+Nas quatro vale, por cartão, o limite do roteiro 8 (`gasto_coberto_limitado`): o estorno só sai do pagamento na parte que reduz a dívida do cartão ou que vai para o "A atribuir"; a parte que só deixa o cartão positivo fica na categoria. Para o limite não esconder a divisão, os dois cartões dos estornos começam com dívida (gastos cobertos em Mercado). O 12C tira a dívida de um deles.
+
+Passos:
+- **12A**: estornos na Farmácia de 10 no Cartão e de 50 no Cartão 2, sem saída na Farmácia. As quatro dão o mesmo (os estornos saem inteiros); confere o ponto de partida.
+- **12B**: saída de 30 na Farmácia no Cartão 3. Líquido 60 − 30 = 30. Separa as quatro.
+- **12C**: apaga o gasto de Mercado do Cartão 2, que fica positivo (sem dívida). Confere o limite junto com a divisão.
+
+Todas as datas são **14/10/2026 (hoje)**. Lance cada transação pela **página da própria conta** (barra da esquerda → a conta → Add Transaction), nunca pela tela All Accounts. Mande uma captura do plano de outubro depois de cada passo (e de novembro no fim do 12B e do 12C).
+
+#### Ponto de partida
+
+O TESTE no fim do roteiro 11: Corrente 720, Investimento 200; Cartão 0 (o Mercado de 10 em 13/10 gastou o +10 de setembro); Cartão 2 0; Cartão 3 −20 (+20 de setembro, Mercado 10 e Farmácia 30 em 14/10). Outubro com Farmácia 60 e Mercado 10 atribuídos.
+
+**Passo 0 — limpeza.**
+
+| # | Onde | O que fazer |
+|---|---|---|
+| 1 | Cartão 3 | Apagar o gasto de **10 em Mercado** (14/10) e o de **30 na Farmácia** (14/10) |
+| 2 | Conta Corrente | Apagar o pagamento de **20** de **20/09** ("Payment: Cartão 3"). A ponta do Cartão 3 some junto |
+
+Confira:
+
+| Onde | Esperado |
+|---|---|
+| Corrente / Investimento | 740 / 200 |
+| Cartão / Cartão 2 / Cartão 3 | 0 / 0 / 0 |
+| Oct 2026: Farmácia (Assigned / Activity / Available) | 60 / 0 / 60 |
+| Oct 2026: Mercado | 10 / −10 / 0 |
+| Oct 2026: Pagamento do Cartão, do Cartão 2 e do Cartão 3 (Available) | 0 / 0 / 0 |
+| Ready to Assign: Sep / Oct / Nov | 890 / 880 / 680 |
+
+**Preparo — dívida nos cartões dos estornos.**
+
+| # | Onde | O que fazer | Depois |
+|---|---|---|---|
+| P1 | Plan, Oct 2026 | Coluna **Assigned** de **Mercado**: de 10 para **150** | Mercado 150 / −10 / 140; Ready to Assign Oct / Nov **740 / 540** |
+
+| # | Abrir a conta | Date | Payee | Category | Valor | Sai de → chega em | Depois de salvar |
+|---|---|---|---|---|---|---|---|
+| P2 | **Cartão 2** | 14/10/2026 | "Mercado X" | **Mercado** | **Outflow 100** | Cartão 2 (vira dívida) → ninguém | Cartão 2 **−100**; Mercado 150 / −110 / 40; Pagamento do Cartão 2 **100** |
+| P3 | **Cartão** | 14/10/2026 | "Mercado X" | **Mercado** | **Outflow 40** | Cartão (vira dívida) → ninguém | Cartão **−40**; Mercado 150 / −150 / 0; Pagamento do Cartão **40** |
+
+#### Passos
+
+Em cada passo, anote: saldo dos três cartões; Activity e Available da Farmácia, do Mercado e dos três pagamentos (e a cor); Ready to Assign de outubro e de novembro.
+
+**12A — dois estornos, sem saída na Farmácia.** Lance nesta ordem (o do Cartão antes).
+
+| # | Abrir a conta | Date | Payee | Category | Valor | Sai de → chega em | Depois de salvar |
+|---|---|---|---|---|---|---|---|
+| A1 | **Cartão** | 14/10/2026 | "Farmácia X" | **Farmácia** | **Inflow 10** (entrada, não saída) | a loja → Cartão (reduz a dívida) | Cartão **−30**; Farmácia 60 / +10 / 70; Pagamento do Cartão **30** |
+| A2 | **Cartão 2** | 14/10/2026 | "Farmácia X" | **Farmácia** | **Inflow 50** | a loja → Cartão 2 | Cartão 2 **−50**; Farmácia 60 / +60 / 120; Pagamento do Cartão 2 **50** |
+
+Igual nas quatro candidatas; Ready to Assign 740 / 540. Se o pagamento continuar 40 ou 100, o estorno não saiu do pagamento mesmo com dívida (contradiz a primeira tentativa do 8E).
+
+**12B — uma saída na Farmácia, num terceiro cartão.**
+
+| # | Abrir a conta | Date | Payee | Category | Valor | Sai de → chega em | Depois de salvar |
+|---|---|---|---|---|---|---|---|
+| B1 | **Cartão 3** | 14/10/2026 | "Farmácia X" | **Farmácia** | **Outflow 30** | Cartão 3 (vira dívida) → ninguém | Cartão 3 **−30**; Farmácia 60 / +30 / 90 |
+
+| Oct: Available | M | O | P | B |
+|---|---|---|---|---|
+| Pagamento do Cartão (estorno 10) | **40** | **30** | **35** | **30** |
+| Pagamento do Cartão 2 (estorno 50) | **70** | **80** | **75** | **50** |
+| Pagamento do Cartão 3 (saída 30) | **0** | **0** | **0** | **30** |
+
+Iguais nas quatro: Farmácia 60 / +30 / 90 (Nov 90); Mercado 150 / −150 / 0; Ready to Assign 740 / 540; em novembro, os pagamentos com os mesmos valores de outubro. No M, o líquido de 30 sai todo do estorno de 50, e o de 10 não sai do pagamento. No B, os dois estornos saem inteiros e a saída de 30 passa para o Cartão 3: a soma dos pagamentos (110) fica igual à dívida dos três cartões (30 + 50 + 30). Se der outra divisão, anote o Activity dos três pagamentos.
+
+**12C — o cartão do estorno maior fica sem dívida.**
+
+| # | Onde | O que fazer | Depois |
+|---|---|---|---|
+| C1 | Cartão 2 | Apagar o gasto de **100 em Mercado** (P2) | Cartão 2 **+50**; Mercado 150 / −50 / 100 |
+
+| Oct: Available | M | O | P | B |
+|---|---|---|---|---|
+| Pagamento do Cartão | **40** | **30** | **35** | **30** |
+| Pagamento do Cartão 2 | 0 | 0 | 0 | 0 |
+| Pagamento do Cartão 3 | **0** | **0** | **0** | **30** |
+
+Iguais nas quatro: Farmácia 60 / +30 / 90; Ready to Assign 740 / 540. O Cartão 2 fica positivo, então o estorno dele não sai do pagamento (limite do roteiro 8 e do 10D). No M, os 30 do líquido vão para o estorno do Cartão 2 e ficam presos no limite; se o 12B der M e aqui der 30 no Cartão, o que o limite segura passa para o estorno seguinte. Se o Pagamento do Cartão 2 der −50 (vermelho), o limite não vale quando a categoria tem estornos em vários cartões.
+
 ## 10. Implicações para o Tostão
 
 - **Modelo**: manter o do YNAB (duas transações com id cruzado; parte de divisão ↔ transação inteira; agendada com uma ponta só). Ele já passa pelo protocolo sem mudança e o `src/server.rs` guarda tudo sem conhecer transferências.
