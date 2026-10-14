@@ -48,7 +48,9 @@ cargo build --target wasm32-unknown-unknown --lib --no-default-features
 
 Uma página em `web/` roda o núcleo em WebAssembly, sem servidor: cria
 orçamento, contas, grupos e categorias, lança transações e mostra o plano e os
-saldos. Ainda não guarda nada: recarregar a página começa de novo.
+saldos. A cópia do aparelho fica no IndexedDB do navegador, então recarregar a
+página não perde nada. Se o navegador não deixar guardar (janela privada, por
+exemplo), a página avisa e as mudanças valem só nessa aba.
 
 ```powershell
 cargo install wasm-bindgen-cli --version 0.2.129 --locked

@@ -2,6 +2,9 @@ import init, { Tostao, formatarValor } from "./pkg/tostao.js";
 
 const $ = (id) => document.getElementById(id);
 let t;
+// Falso quando o navegador não deixou ler a cópia guardada: nesse caso a
+// página não grava, para não sobrescrever o que já está lá.
+let guardando = true;
 
 function esc(texto) {
   return String(texto).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -32,9 +35,71 @@ function preencher(select, opcoes) {
   if (opcoes.some(([valor]) => valor === atual)) select.value = atual;
 }
 
+// Armazenamento: uma cópia (texto JSON) no IndexedDB do navegador.
+const BANCO = "tostao";
+const LOJA = "aparelho";
+const CHAVE = "copia";
+
+function abrirBanco() {
+  return new Promise((ok, falha) => {
+    const pedido = indexedDB.open(BANCO, 1);
+    pedido.onupgradeneeded = () => pedido.result.createObjectStore(LOJA);
+    pedido.onsuccess = () => ok(pedido.result);
+    pedido.onerror = () => falha(pedido.error);
+    pedido.onblocked = () => falha(new Error("o banco está aberto em outra aba"));
+  });
+}
+
+async function operar(modo, fazer) {
+  const db = await abrirBanco();
+  try {
+    return await new Promise((ok, falha) => {
+      const tx = db.transaction(LOJA, modo);
+      const pedido = fazer(tx.objectStore(LOJA));
+      tx.oncomplete = () => ok(pedido ? pedido.result ?? null : null);
+      tx.onerror = () => falha(tx.error);
+      tx.onabort = () => falha(tx.error ?? new Error("gravação cancelada"));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+const lerCopia = () => operar("readonly", (loja) => loja.get(CHAVE));
+const gravarCopia = (texto) => operar("readwrite", (loja) => loja.put(texto, CHAVE));
+
+/** Aviso que fica até recarregar: sem armazenamento, as mudanças só valem nesta aba. */
+function semArmazenamento(motivo) {
+  guardando = false;
+  $("armazenamento").textContent = `${motivo} As mudanças só ficam nesta aba.`;
+}
+
+/** Carrega a cópia guardada, ou começa um orçamento novo se não houver. */
+async function carregarAparelho() {
+  let texto;
+  try {
+    texto = await lerCopia();
+  } catch (e) {
+    semArmazenamento(`Não deu para ler o que está guardado no navegador (${e}).`);
+    return Tostao.novoOrcamento("Família");
+  }
+  if (texto) {
+    try {
+      return Tostao.deJson(texto);
+    } catch (e) {
+      semArmazenamento(`A cópia guardada no navegador não pôde ser lida (${e}).`);
+      return Tostao.novoOrcamento("Família");
+    }
+  }
+  return Tostao.novoOrcamento("Família");
+}
+
 function render() {
   const plano = JSON.parse(t.plano($("mes").value));
   const contas = JSON.parse(t.contas());
+
+  const pendentes = t.mudancasPendentes();
+  $("pendentes").textContent = `${pendentes} mudança(s) ainda não enviada(s) ao servidor.`;
 
   $("a-atribuir").textContent =
     plano.a_atribuir === null
@@ -63,37 +128,51 @@ function render() {
   preencher($("categoria-grupo"), plano.grupos.map((g) => [g.nome, g.nome]));
 }
 
-/** Depois de cada mudança: a tela mostra o que o núcleo calcula. */
-function aposMudanca() {
+/** Depois de cada mudança: grava a cópia (se der) e mostra o que o núcleo calcula. */
+async function aposMudanca() {
+  if (guardando) {
+    try {
+      await gravarCopia(t.paraJson());
+    } catch (e) {
+      $("erro").textContent = `Não deu para guardar no navegador (${e}). A mudança só existe nesta aba.`;
+    }
+  }
   render();
 }
 
 /** Roda uma ação do usuário; mostra o erro do núcleo, se houver. */
 function acao(fn) {
-  return (evento) => {
+  return async (evento) => {
     evento.preventDefault();
     try {
       fn();
-      $("erro").textContent = "";
-      aposMudanca();
-      evento.target.reset();
-      $("lancar-data").value = hojeIso();
     } catch (e) {
       $("erro").textContent = String(e);
+      return;
     }
+    $("erro").textContent = "";
+    await aposMudanca();
+    evento.target.reset();
+    $("lancar-data").value = hojeIso();
   };
 }
 
 async function principal() {
   await init();
-  t = Tostao.novoOrcamento("Família");
+  t = await carregarAparelho();
+  if (guardando) {
+    try {
+      await gravarCopia(t.paraJson());
+    } catch (e) {
+      semArmazenamento(`Não deu para guardar no navegador (${e}).`);
+    }
+  }
 
   $("mes").value = mesAtual();
   $("lancar-data").value = hojeIso();
   $("mes").addEventListener("change", () => {
     try {
       render();
-      $("erro").textContent = "";
     } catch (e) {
       $("erro").textContent = String(e);
     }
