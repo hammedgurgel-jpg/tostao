@@ -97,3 +97,23 @@ fn instalacao_do_service_worker_nao_desiste_por_um_arquivo() {
     let codigo = fs::read_to_string(web().join("sw.js")).expect("web/sw.js");
     assert!(!codigo.contains("addAll"), "addAll é atômico: um arquivo faltando derruba a casca inteira");
 }
+
+/// O cache em tempo de execução é só para a casca: qualquer outro GET do
+/// mesmo site passa pela rede sem ser guardado.
+#[test]
+fn cache_so_guarda_arquivos_da_casca() {
+    let codigo = fs::read_to_string(web().join("sw.js")).expect("web/sw.js");
+    assert!(codigo.contains("CASCA.has(pedido.url)"), "cache.put sem checar se o pedido é da casca");
+}
+
+/// Cor do tema e ícones aparecem na página e no manifesto: os dois têm de bater.
+#[test]
+fn cabecalho_da_pagina_bate_com_o_manifesto() {
+    let html = fs::read_to_string(web().join("index.html")).expect("web/index.html");
+    let m = manifesto();
+    let cor = m["theme_color"].as_str().expect("theme_color");
+    assert!(html.contains(&format!("<meta name=\"theme-color\" content=\"{cor}\">")), "theme-color diferente do manifesto");
+    assert!(html.contains("<link rel=\"manifest\" href=\"manifest.webmanifest\">"));
+    let icone = m["icons"][0]["src"].as_str().expect("src do ícone");
+    assert!(html.contains(&format!("href=\"{icone}\"")), "ícone da página diferente do manifesto");
+}

@@ -15,6 +15,9 @@ const PRECACHE = [
   "pkg/tostao_bg.wasm",
 ];
 
+// Endereços absolutos da casca: só eles entram no cache em tempo de execução.
+const CASCA = new Set(PRECACHE.map((caminho) => new URL(caminho, self.registration.scope).href));
+
 self.addEventListener("install", (evento) => {
   // Um arquivo de cada vez: um que falta (o pkg/ sem build, por exemplo) não
   // impede de guardar o resto. A versão em lote desiste de tudo se um faltar.
@@ -49,6 +52,6 @@ async function responder(pedido) {
   const guardado = await cache.match(pedido.mode === "navigate" ? "index.html" : pedido);
   if (guardado) return guardado;
   const resposta = await fetch(pedido);
-  if (resposta.ok) cache.put(pedido, resposta.clone());
+  if (resposta.ok && CASCA.has(pedido.url)) cache.put(pedido, resposta.clone());
   return resposta;
 }
