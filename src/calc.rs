@@ -173,23 +173,25 @@ pub fn month_over_spent<'a>(
 }
 
 /// Divide o gasto coberto de uma categoria no crédito
-/// (`budgeted_credit_outflows`, ≤ 0) entre os cartões em que ela gastou no
-/// mês (`on_cards`, o gasto em cada um). Devolve a parte coberta em cada
-/// cartão, na mesma ordem.
+/// (`budgeted_credit_outflows`, ≤ 0) entre as suas saídas no crédito do mês
+/// (`outflows`, uma por transação, na ordem de lançamento). Devolve a parte
+/// coberta de cada uma, na mesma ordem; quem chama soma por cartão.
 ///
 /// Não está no bundle (é soma do servidor). **Conferido na tela** (análise
-/// 03, roteiros 9E e 10): o cartão com o maior gasto é coberto primeiro, e o
-/// estouro fica nos menores. Ex.: 60 cobertos de 10 + 90 ficam 0 e 60. Em
-/// caso de empate, vale a ordem de `on_cards` (não visto). Um estorno
-/// coberto (> 0) vai do maior estorno para o menor, pela mesma regra.
-pub fn funded_by_card(budgeted_credit_outflows: i64, on_cards: &[i64]) -> Vec<i64> {
-    let mut funded = vec![0; on_cards.len()];
+/// 03, roteiros 9E, 10 e 11): a **maior transação** é coberta primeiro, e o
+/// estouro fica nas menores. Ex.: 60 cobertos de 10 + 90 ficam 0 e 60; de
+/// 40 + 40 num cartão e 70 no outro, ficam 0, 0 e 60 (11B: a ordem é por
+/// transação, não pela soma do cartão). No empate, a lançada antes é
+/// coberta primeiro (11C). Um estorno coberto (> 0) vai do maior estorno
+/// para o menor, pela mesma regra (não visto).
+pub fn funded_by_card(budgeted_credit_outflows: i64, outflows: &[i64]) -> Vec<i64> {
+    let mut funded = vec![0; outflows.len()];
     let sign = if budgeted_credit_outflows < 0 { -1 } else { 1 };
-    let mut order: Vec<usize> = (0..on_cards.len()).filter(|&i| on_cards[i] * sign > 0).collect();
-    order.sort_by_key(|&i| -(on_cards[i] * sign));
+    let mut order: Vec<usize> = (0..outflows.len()).filter(|&i| outflows[i] * sign > 0).collect();
+    order.sort_by_key(|&i| -(outflows[i] * sign));
     let mut rest = budgeted_credit_outflows * sign;
     for i in order {
-        let part = rest.min(on_cards[i] * sign);
+        let part = rest.min(outflows[i] * sign);
         funded[i] = part * sign;
         rest -= part;
     }

@@ -1128,3 +1128,84 @@ fn roteiro_10_conferido() {
     assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (900_000, 650_000));
     assert_eq!((pagamento(&c, NOV, "cartao3"), c.disponivel(NOV, "farmacia")), (0, 60_000));
 }
+
+#[test]
+fn roteiro_11_conferido() {
+    // Conferido na tela em 2026-10-14 (análise 03, roteiro 11), lançado
+    // pelo navegador (11A a 11C) e pelo usuário (11D). Parte do fim do 10E
+    // como lançado.
+    const SET: u32 = 9;
+    let pagamento = |c: &Calculos, m: u32, cartao: &str| c.disponivel(m, &format!("pagamento-{cartao}"));
+    let mut r = roteiro_10_partida();
+    let p = r.transfere("corrente", "cartao3", 20_000, None);
+    data_das_pontas(&mut r, p, dia(SET, 20));
+    let e1 = r.lanca("cartao3", -30_000, None);
+    r.transacao(&e1).data = dia(OUT, 14);
+    let p2 = r.transfere("corrente", "cartao3", 30_000, None);
+    data_das_pontas(&mut r, p2.clone(), dia(OUT, 14));
+
+    // 11A: o gasto de 30 do 10E recebe a categoria Farmácia. Os 20 pagos
+    // com o crédito de setembro são dinheiro coberto; os 10 de dívida passam
+    // para o pagamento, e o pagamento de 30 recria os +20 (A atribuir +20).
+    r.transacao(&e1).categoria = Some("farmacia".into());
+    let c = r.calcula();
+    assert_eq!((c.atividade(OUT, "farmacia"), c.disponivel(OUT, "farmacia")), (-30_000, 30_000));
+    assert_eq!((c.atividade(OUT, "pagamento-cartao3"), pagamento(&c, OUT, "cartao3")), (-20_000, -20_000));
+    assert_eq!(c.mes(dia(OUT, 1)).unwrap().sem_categoria.balance, Some(-200_000));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (900_000, 680_000));
+    assert_eq!((pagamento(&c, NOV, "cartao3"), c.disponivel(NOV, "farmacia")), (0, 30_000));
+
+    // Limpeza: apaga o gasto e o pagamento de outubro.
+    r.remove(&e1);
+    r.remove(&p2.0);
+    r.remove(&p2.1);
+    let c = r.calcula();
+    assert_eq!((c.conta("corrente"), c.conta("cartao3")), (720_000, 20_000));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (880_000, 680_000));
+
+    // 11B: 40 + 40 no Cartão 2 e 70 no Cartão. A maior transação (70) é
+    // coberta primeiro, mesmo com o Cartão 2 somando mais (80).
+    let b = [
+        farmacia_14(&mut r, "cartao2", -40_000),
+        farmacia_14(&mut r, "cartao2", -40_000),
+        farmacia_14(&mut r, "cartao", -70_000),
+    ];
+    let c = r.calcula();
+    assert_eq!((c.atividade(OUT, "farmacia"), c.disponivel(OUT, "farmacia")), (-150_000, -90_000));
+    assert_eq!((pagamento(&c, OUT, "cartao"), pagamento(&c, OUT, "cartao2")), (60_000, 0));
+    assert_eq!((pagamento(&c, NOV, "cartao"), pagamento(&c, NOV, "cartao2")), (60_000, 0));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (880_000, 680_000));
+
+    // 11C: empate, 50 no Cartão 2 (lançado antes) e 50 no Cartão: o lançado
+    // antes é coberto primeiro.
+    for t in b {
+        r.remove(&t);
+    }
+    let c1 = farmacia_14(&mut r, "cartao2", -50_000);
+    let c2 = farmacia_14(&mut r, "cartao", -50_000);
+    let c = r.calcula();
+    assert_eq!(c.disponivel(OUT, "farmacia"), -40_000);
+    assert_eq!((pagamento(&c, OUT, "cartao"), pagamento(&c, OUT, "cartao2")), (10_000, 50_000));
+    assert_eq!((pagamento(&c, NOV, "cartao"), pagamento(&c, NOV, "cartao2")), (10_000, 50_000));
+
+    // 11D: Cartão 3 com +20 de setembro. Mercado (sem dinheiro) gasta 10:
+    // paga com o crédito, estoura em dinheiro (vermelho).
+    r.remove(&c1);
+    r.remove(&c2);
+    let d1 = r.lanca("cartao3", -10_000, Some("mercado"));
+    r.transacao(&d1).data = dia(OUT, 14);
+    let c = r.calcula();
+    assert_eq!((c.disponivel(OUT, "mercado"), c.cat(OUT, "mercado").cash_overspent()), (-10_000, -10_000), "vermelho");
+    assert_eq!(pagamento(&c, OUT, "cartao3"), 0);
+    // Depois, 30 na Farmácia no mesmo dia: a maior saída usa o crédito, e o
+    // Mercado passa a estourar no crédito (amarelo).
+    farmacia_14(&mut r, "cartao3", -30_000);
+    let c = r.calcula();
+    assert_eq!(c.conta("cartao3"), -20_000);
+    let mercado = c.cat(OUT, "mercado");
+    assert_eq!((mercado.balance, mercado.cash_overspent(), mercado.credit_overspent()), (Some(-10_000), 0, -10_000), "amarelo");
+    assert_eq!((c.atividade(OUT, "farmacia"), c.disponivel(OUT, "farmacia")), (-30_000, 30_000));
+    assert_eq!((c.atividade(OUT, "pagamento-cartao3"), pagamento(&c, OUT, "cartao3")), (10_000, 10_000));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (880_000, 680_000));
+    assert_eq!((pagamento(&c, NOV, "cartao3"), c.disponivel(NOV, "farmacia")), (10_000, 30_000));
+}

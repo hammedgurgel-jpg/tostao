@@ -282,8 +282,9 @@ impl Calculos {
 struct Saidas {
     dinheiro: i64,
     credito: i64,
-    /// Saídas no crédito, por cartão.
-    por_cartao: BTreeMap<String, i64>,
+    /// Saídas no crédito, uma por transação (ou parte), na ordem de
+    /// lançamento: (cartão, valor).
+    no_credito: Vec<(String, i64)>,
 }
 
 /// Somas de um cartão num mês.
@@ -333,7 +334,7 @@ pub fn calcular(orcamento: &Orcamento) -> Calculos {
                     Some(cartao) => {
                         s.credito += l.valor - em_dinheiro;
                         s.dinheiro += em_dinheiro;
-                        *s.por_cartao.entry(cartao.clone()).or_default() += l.valor - em_dinheiro;
+                        s.no_credito.push((cartao.clone(), l.valor - em_dinheiro));
                     }
                     None => s.dinheiro += l.valor,
                 }
@@ -412,9 +413,9 @@ pub fn calcular(orcamento: &Orcamento) -> Calculos {
         let mut coberto_no_cartao: HashMap<&str, i64> = HashMap::new();
         for (n, calc) in normais.iter().zip(&calculadas) {
             let Some(s) = saidas.get(&(n.id.as_str(), mes)) else { continue };
-            let gastos: Vec<i64> = s.por_cartao.values().copied().collect();
+            let gastos: Vec<i64> = s.no_credito.iter().map(|(_, valor)| *valor).collect();
             let cobertos = funded_by_card(calc.calculo.budgeted_credit_outflows, &gastos);
-            for (cartao, coberto) in s.por_cartao.keys().zip(cobertos) {
+            for ((cartao, _), coberto) in s.no_credito.iter().zip(cobertos) {
                 *coberto_no_cartao.entry(cartao.as_str()).or_default() += coberto;
             }
         }
@@ -536,8 +537,9 @@ fn gasto_coberto_limitado(coberto: i64, saldo_anterior: i64, mes: Cartao, excess
 /// pagamento 0 / 0); no 9E (o crédito de 10 foi para o gasto de 30 na
 /// Farmácia, não para o de 10 em Mercado, do mesmo dia); no 10E (saída sem
 /// categoria de 30 com +20 de setembro: 20 estouram em dinheiro e descontam
-/// do mês seguinte). As saídas são consumidas por data e, no mesmo dia, da
-/// maior para a menor (inferido do 9E).
+/// do mês seguinte); no 11D (no mesmo dia, Mercado 10 lançado antes e
+/// Farmácia 30: o crédito foi para a Farmácia). As saídas são consumidas por
+/// data e, no mesmo dia, da maior para a menor.
 fn credito_consumido(lancamentos: &[Lancamento], saldos: &SaldosPorMes) -> HashMap<usize, i64> {
     let mut saidas: BTreeMap<(&str, Date), Vec<usize>> = BTreeMap::new();
     for (i, l) in lancamentos.iter().enumerate() {

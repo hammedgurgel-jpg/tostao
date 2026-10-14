@@ -1022,11 +1022,26 @@ Teste `roteiro_10_conferido`.
   - O pagamento que recria esse positivo vai para o "A atribuir" (`saldo_positivo_novo`).
 
   O teste `roteiro_9e_divisao_entre_dois_cartoes` deixou de ser `#[ignore]`.
-- **Não visto** (a conferir num próximo roteiro):
-  - empate entre dois cartões com o mesmo gasto;
-  - se a ordem é por cartão ou por transação (no 10B as duas dão o mesmo);
-  - qual saída consome o crédito trazido quando há várias no mesmo dia (só o 9E mostra isso);
-  - o 10E com a categoria (previsão: Pagamento −20 / −20 vermelho, 900 / 680).
+- Os pontos que ficaram em aberto (empate, ordem por cartão ou por transação, qual saída consome o crédito trazido, o 10E com a categoria) foram conferidos no roteiro 11.
+
+### Roteiro 11 — empate, ordem por transação e crédito trazido
+
+**Para que serve.** Conferir o que o roteiro 10 deixou em aberto. Foi o primeiro roteiro lançado pelo navegador (Claude in Chrome, com autorização do usuário para a lista de lançamentos abaixo); o 11D foi terminado pelo usuário. Todas as datas são 14/10/2026. Parte do fim do 10E como lançado (Cartão 3 com +20 de setembro, gasto de 30 sem categoria e pagamento de 30 em outubro). Teste `roteiro_11_conferido`.
+
+| Passo | Lançamentos | Motor antes | Alternativa | Tela |
+|---|---|---|---|---|
+| 11A | o gasto de 30 do 10E recebe a categoria Farmácia | Pagamento do Cartão 3 −20 / −20, Ready to Assign 900 / 680 | — | **igual ao motor** |
+| Limpeza | apaga o gasto e o pagamento de 30 de outubro | 880 / 680, Cartão 3 +20 | — | **igual** |
+| 11B | Farmácia (60): 40 + 40 no Cartão 2, 70 no Cartão | por cartão: Cartão 2 60, Cartão 0 | por transação: Cartão 60, Cartão 2 0 | **Cartão 60, Cartão 2 0** (novembro igual) |
+| 11C | Farmácia: 50 no Cartão 2 (antes), 50 no Cartão | Cartão 50, Cartão 2 10 (ordem das contas) | o lançado antes: Cartão 2 50 | **Cartão 2 50, Cartão 10** |
+| 11D, D1 | Mercado (sem dinheiro) 10 no Cartão 3 | Mercado −10 vermelho (pago com o crédito) | — | **igual** |
+| 11D, D2 | Farmácia 30 no Cartão 3, mesmo dia | a maior usa o crédito: Mercado −10 amarelo, Pagamento 10 / 10, 880 / 680 | a primeira lançada: Mercado −10 vermelho, Pagamento 20, 880 / 670 | **igual ao motor** |
+
+Conclusões:
+- **A ordem é por transação**: a maior transação no crédito é coberta primeiro, não o cartão com a maior soma (11B). No empate, a lançada antes (11C; a ordem das contas daria o contrário). `funded_by_card` passou a receber as transações, e o motor soma por cartão.
+- O 10E com a categoria fecha com a regra do roteiro 10: os 20 pagos com o crédito trazido são dinheiro coberto, os 10 de dívida passam para o pagamento, e o pagamento recria os +20 no "A atribuir".
+- **No mesmo dia, o crédito trazido vai para a maior saída** (11D), como o motor já fazia a partir do 9E. A saída que perde o crédito volta a estourar no crédito (amarelo).
+- No navegador, a transação nova lançada pela tela **All Accounts** trocando a conta no campo Account **não é gravada**: aparece na lista, mas o saldo não muda e ela some ao recarregar (o YNAB dá erro `deviceAttributes` no console). Pela página da conta, grava. Recarregar a página logo depois de salvar também pode perder a transação.
 
 ## 10. Implicações para o Tostão
 
