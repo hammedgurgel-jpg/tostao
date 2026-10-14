@@ -175,6 +175,7 @@ async function sincronizarAgora(evento) {
     return;
   }
   if (!navigator.onLine) {
+    $("token").value = "";
     $("sincronizacao").textContent = "Sem rede: o orçamento continua guardado neste aparelho. Sincronize quando a conexão voltar.";
     return;
   }
