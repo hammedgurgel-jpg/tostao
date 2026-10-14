@@ -186,7 +186,11 @@ async function sincronizarAgora(evento) {
     sucesso = true;
     $("sincronizacao").textContent = `Sincronizado com ${servidor}.`;
   } catch (e) {
-    $("sincronizacao").textContent = `Não deu para sincronizar: ${e}`;
+    // Falha de rede (servidor fora do ar, endereço errado, rede sem internet).
+    const texto = String(e);
+    $("sincronizacao").textContent = texto.includes("não deu para falar com o servidor")
+      ? `Não deu para falar com ${servidor}. Confira a conexão e o endereço; o orçamento continua guardado neste aparelho.`
+      : `Não deu para sincronizar: ${texto}`;
   } finally {
     $("token").value = "";
     $("sincronizar").disabled = false;

@@ -16,7 +16,13 @@ const PRECACHE = [
 ];
 
 self.addEventListener("install", (evento) => {
-  evento.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(PRECACHE)));
+  // Um arquivo de cada vez: um que falta (o pkg/ sem build, por exemplo) não
+  // impede de guardar o resto. A versão em lote desiste de tudo se um faltar.
+  evento.waitUntil(
+    caches.open(CACHE).then((cache) =>
+      Promise.all(PRECACHE.map((caminho) => cache.add(caminho).catch((e) => console.warn("Não guardou", caminho, e))))
+    )
+  );
   self.skipWaiting();
 });
 

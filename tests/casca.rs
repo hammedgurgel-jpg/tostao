@@ -89,3 +89,11 @@ fn arquivos_da_casca_existem_em_web() {
         assert!(web().join(&caminho).is_file(), "{caminho} não existe em web/");
     }
 }
+
+/// `cache.addAll` é atômico: um arquivo que falta (o `pkg/`, por exemplo) não
+/// deixa guardar nem a página. A instalação guarda um arquivo de cada vez.
+#[test]
+fn instalacao_do_service_worker_nao_desiste_por_um_arquivo() {
+    let codigo = fs::read_to_string(web().join("sw.js")).expect("web/sw.js");
+    assert!(!codigo.contains("addAll"), "addAll é atômico: um arquivo faltando derruba a casca inteira");
+}
