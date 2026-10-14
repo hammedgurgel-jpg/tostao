@@ -1,0 +1,15 @@
+{
+  "name": "Tostão",
+  "short_name": "Tostão",
+  "description": "Orçamento por envelopes para a família, com sincronização entre aparelhos.",
+  "lang": "pt-BR",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f7f5",
+  "theme_color": "#1f6f5b",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

@@ -174,6 +174,10 @@ async function sincronizarAgora(evento) {
     $("sincronizacao").textContent = "Informe o servidor e o token.";
     return;
   }
+  if (!navigator.onLine) {
+    $("sincronizacao").textContent = "Sem rede: o orçamento continua guardado neste aparelho. Sincronize quando a conexão voltar.";
+    return;
+  }
   $("sincronizar").disabled = true;
   $("sincronizacao").textContent = "Sincronizando…";
   let sucesso = false;
@@ -225,7 +229,19 @@ async function entrarNoOrcamento(evento) {
   render();
 }
 
+/** Casca offline: o service worker guarda a página para abrir sem rede. */
+async function registrarCasca() {
+  if (!("serviceWorker" in navigator)) return;
+  try {
+    await navigator.serviceWorker.register("sw.js");
+  } catch (e) {
+    // O app segue funcionando online; só não abre sem rede.
+    console.warn("Sem casca offline:", e);
+  }
+}
+
 async function principal() {
+  registrarCasca();
   await init();
   t = await carregarAparelho();
   if (guardando) {
