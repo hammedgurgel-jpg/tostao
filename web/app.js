@@ -188,8 +188,9 @@ async function sincronizarAgora(evento) {
     $("sincronizacao").textContent = `Sincronizado com ${servidor}.`;
   } catch (e) {
     // Falha de rede (servidor fora do ar, endereço errado, rede sem internet).
-    const texto = String(e);
-    $("sincronizacao").textContent = texto.includes("não deu para falar com o servidor")
+    // O núcleo diz o tipo do erro; a mensagem só entra no aviso de outros casos.
+    const texto = e?.mensagem ?? String(e);
+    $("sincronizacao").textContent = e?.tipo === "rede"
       ? `Não deu para falar com ${servidor}. Confira a conexão e o endereço; o orçamento continua guardado neste aparelho.`
       : `Não deu para sincronizar: ${texto}`;
   } finally {

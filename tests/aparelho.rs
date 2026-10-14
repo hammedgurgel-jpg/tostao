@@ -6,7 +6,7 @@ use std::task::{Context, Waker};
 
 use futures_executor::block_on;
 use tostao::aparelho::{formatar_valor, ler_mes, ler_valor, Aparelho, Destino, Plano, TipoDeConta};
-use tostao::api::{ApiError, HttpResponse, Transport};
+use tostao::api::{erro_do_servidor, ApiError, HttpResponse, Transport};
 use tostao::dates::Date;
 use tostao::protocol::{CatalogRequest, TOSTAO_SCHEMA_VERSION};
 
@@ -126,6 +126,28 @@ fn o_token_nao_entra_na_copia_do_aparelho() {
     let erro = block_on(a.sincronizar(SemRede, "token-secreto-123")).unwrap_err();
     assert!(erro.to_string().contains("não deu para falar com o servidor"), "{erro}");
     assert!(!a.para_json().unwrap().contains("token-secreto-123"));
+}
+
+/// Falha de rede é reconhecida pelo tipo do erro, não pelo texto da mensagem.
+#[test]
+fn falha_de_rede_se_reconhece_pelo_tipo() {
+    let mut a = Aparelho::novo_orcamento("Família");
+    let erro = block_on(a.sincronizar(SemRede, "token")).unwrap_err();
+    assert!(erro.e_falha_de_rede(), "{erro}");
+}
+
+/// Resposta do servidor (mesmo recusando o token) não é falha de rede.
+#[test]
+fn resposta_do_servidor_nao_e_falha_de_rede() {
+    struct Recusa;
+    impl Transport for Recusa {
+        async fn post(&mut self, _: &str, _: &CatalogRequest) -> Result<HttpResponse, ApiError> {
+            Err(ApiError::Server(erro_do_servidor(401, r#"{"error":{"id":"unauthorized"}}"#)))
+        }
+    }
+    let mut a = Aparelho::novo_orcamento("Família");
+    let erro = block_on(a.sincronizar(Recusa, "token")).unwrap_err();
+    assert!(!erro.e_falha_de_rede(), "{erro}");
 }
 
 /// Transporte que responde uma sincronização válida, sem entidades do servidor.

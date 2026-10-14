@@ -1,10 +1,11 @@
 // Casca do Tostão: guarda a página e o núcleo em WebAssembly para abrir sem
 // rede. O orçamento em si fica no IndexedDB (ver app.js), não aqui.
 //
-// Ao mudar algum arquivo da casca, suba a versão de CACHE: é ela que faz o
-// navegador trocar os arquivos guardados (a estratégia é "primeiro o cache").
+// A casca se atualiza sozinha: cada pedido responde com a cópia guardada (se
+// houver) e busca a versão nova na rede para a próxima abertura. Por isso o
+// nome do cache é fixo e não há versão para subir a cada mudança.
 // Os testes em tests/casca.rs conferem esta lista com os arquivos de web/.
-const CACHE = "tostao-casca-v1";
+const CACHE = "tostao-casca";
 const PRECACHE = [
   "index.html",
   "app.js",
@@ -15,8 +16,9 @@ const PRECACHE = [
   "pkg/tostao_bg.wasm",
 ];
 
-// Endereços absolutos da casca: só eles entram no cache em tempo de execução.
+// Endereços absolutos da casca: só eles entram no cache.
 const CASCA = new Set(PRECACHE.map((caminho) => new URL(caminho, self.registration.scope).href));
+const INICIO = new URL("index.html", self.registration.scope).href;
 
 self.addEventListener("install", (evento) => {
   // Um arquivo de cada vez: um que falta (o pkg/ sem build, por exemplo) não
@@ -49,9 +51,18 @@ self.addEventListener("fetch", (evento) => {
 async function responder(pedido) {
   const cache = await caches.open(CACHE);
   // Navegar para qualquer endereço abre a página; o app não tem outras telas.
-  const guardado = await cache.match(pedido.mode === "navigate" ? "index.html" : pedido);
-  if (guardado) return guardado;
-  const resposta = await fetch(pedido);
-  if (resposta.ok && CASCA.has(pedido.url)) cache.put(pedido, resposta.clone());
-  return resposta;
+  const alvo = pedido.mode === "navigate" ? INICIO : pedido;
+  const url = typeof alvo === "string" ? alvo : alvo.url;
+  const guardado = await cache.match(alvo);
+  // A rede é consultada sempre: a resposta nova entra no cache para a próxima
+  // abertura. Sem cópia guardada, ela é a própria resposta.
+  const rede = fetch(alvo).then((resposta) => {
+    if (resposta.ok && CASCA.has(url)) cache.put(alvo, resposta.clone());
+    return resposta;
+  });
+  if (guardado) {
+    rede.catch(() => {});
+    return guardado;
+  }
+  return rede;
 }

@@ -103,7 +103,17 @@ fn instalacao_do_service_worker_nao_desiste_por_um_arquivo() {
 #[test]
 fn cache_so_guarda_arquivos_da_casca() {
     let codigo = fs::read_to_string(web().join("sw.js")).expect("web/sw.js");
-    assert!(codigo.contains("CASCA.has(pedido.url)"), "cache.put sem checar se o pedido é da casca");
+    assert!(codigo.contains("CASCA.has(url)"), "cache.put sem checar se o pedido é da casca");
+}
+
+/// A casca se atualiza sozinha: quando já há cópia guardada, o service worker
+/// responde com ela e busca a versão nova na rede para a próxima abertura. Por
+/// isso não há versão de cache para editar à mão a cada mudança.
+#[test]
+fn casca_atualiza_em_segundo_plano_sem_versao_manual() {
+    let codigo = fs::read_to_string(web().join("sw.js")).expect("web/sw.js");
+    assert!(!codigo.contains("tostao-casca-v"), "CACHE com versão à mão em sw.js");
+    assert!(codigo.contains("fetch(alvo)"), "sw.js não busca a casca na rede em segundo plano");
 }
 
 /// Cor do tema e ícones aparecem na página e no manifesto: os dois têm de bater.

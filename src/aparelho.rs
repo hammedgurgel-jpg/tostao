@@ -85,6 +85,15 @@ impl std::fmt::Display for Erro {
     }
 }
 
+impl Erro {
+    /// `true` quando a sincronização não alcançou o servidor (sem rede,
+    /// endereço errado, servidor fora do ar). Quem chama usa isto, e não o
+    /// texto da mensagem, para decidir o aviso da tela.
+    pub fn e_falha_de_rede(&self) -> bool {
+        matches!(self, Erro::Sincronizacao(SyncError::Api(ApiError::Transport(_))))
+    }
+}
+
 impl std::error::Error for Erro {}
 
 /// Tipo de conta, como na conversa.

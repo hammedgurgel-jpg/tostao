@@ -178,9 +178,19 @@ impl Tostao {
             let resultado = aparelho.sincronizar(transporte, &token).await;
             // O aparelho volta mesmo quando a sincronização falha.
             *guarda.borrow_mut() = Some(aparelho);
-            resultado.map(|_| JsValue::UNDEFINED).map_err(erro_js)
+            resultado.map(|_| JsValue::UNDEFINED).map_err(erro_sincronizacao)
         }))
     }
+}
+
+/// Erro da sincronização como `{ tipo, mensagem }`: `tipo` é `"rede"` quando o
+/// servidor não foi alcançado, e `"outro"` nos demais casos.
+fn erro_sincronizacao(e: Erro) -> JsValue {
+    let objeto = js_sys::Object::new();
+    let tipo = if e.e_falha_de_rede() { "rede" } else { "outro" };
+    let _ = js_sys::Reflect::set(&objeto, &"tipo".into(), &JsValue::from_str(tipo));
+    let _ = js_sys::Reflect::set(&objeto, &"mensagem".into(), &JsValue::from_str(&e.to_string()));
+    objeto.into()
 }
 
 /// [`Transport`] pelo `fetch` do navegador. O token e o id do aparelho vão
