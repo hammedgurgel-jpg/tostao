@@ -24,6 +24,12 @@ serde_json = { version = "1", features = ["preserve_order"] }
 rusqlite = { version = "0.40.2", features = ["bundled"], optional = true }
 tiny_http = { version = "0.12", optional = true }
 ureq = { version = "2", default-features = false, optional = true }
+# Ids aleatórios (ver `aparelho::novo_id`). No navegador, a fonte é
+# `crypto.getRandomValues`, pela feature `js`.
+getrandom = "0.2"
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
 
 [[bin]]
 name = "tostao"

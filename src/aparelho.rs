@@ -20,9 +20,7 @@
 //! do grupo interno, da categoria de receita e do grupo dos pagamentos de
 //! cartão, e o campo `month` direto na atribuição.
 
-use std::collections::hash_map::RandomState;
 use std::collections::BTreeMap;
-use std::hash::{BuildHasher, Hasher};
 #[cfg(feature = "arquivo")]
 use std::path::Path;
 #[cfg(feature = "arquivo")]
@@ -679,17 +677,13 @@ fn caminho_livre(caminho: &Path) -> Result<PathBuf, Erro> {
 }
 
 /// Id novo, aleatório, no formato de um UUID (sem as garantias de versão).
+/// A fonte é a do sistema (ou `crypto.getRandomValues`, no navegador): dois
+/// aparelhos não podem gerar o mesmo id.
 pub fn novo_id() -> String {
-    let parte = || RandomState::new().build_hasher().finish();
-    let (a, b) = (parte(), parte());
-    format!(
-        "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
-        a >> 32,
-        (a >> 16) & 0xffff,
-        a & 0xffff,
-        b >> 48,
-        b & 0xffff_ffff_ffff
-    )
+    let mut bytes = [0u8; 16];
+    getrandom::getrandom(&mut bytes).expect("a fonte de aleatoriedade do sistema não respondeu");
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    format!("{}-{}-{}-{}-{}", &hex[0..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..32])
 }
 
 /// Lê um valor em reais: `80`, `-80`, `80,50`, `1.234,56`, `80.50`.
@@ -757,4 +751,18 @@ pub fn ler_mes(texto: &str) -> Result<Date, Erro> {
         .or_else(|_| Date::parse_from_str(t, "%Y-%m-%d"))
         .map(start_of_month)
         .map_err(|_| Erro::Valor(format!("mês inválido: \"{texto}\" (use AAAA-MM)")))
+}
+
+#[cfg(test)]
+mod testes_de_id {
+    use super::novo_id;
+
+    #[test]
+    fn ids_novos_sao_distintos_e_tem_formato_de_uuid() {
+        let (a, b) = (novo_id(), novo_id());
+        assert_ne!(a, b);
+        let partes: Vec<usize> = a.split('-').map(str::len).collect();
+        assert_eq!(partes, [8, 4, 4, 4, 12]);
+        assert!(a.chars().all(|c| c == '-' || c.is_ascii_hexdigit()));
+    }
 }
