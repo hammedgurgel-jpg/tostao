@@ -1,4 +1,6 @@
+use std::future::Future;
 use std::sync::{Arc, Mutex};
+use std::task::{Context, Waker};
 
 use futures_executor::block_on;
 use serde_json::{json, Value};
@@ -264,4 +266,40 @@ fn missing_budget_version_returns_early() {
     let r = e.sincronizar_esperando(None, None, SyncType::Delta).unwrap();
     assert!(r.server_had_changed_entities);
     assert!(e.api.transport.sent.is_empty());
+}
+
+/// Transporte que trava na primeira chamada (a future fica pendente para
+/// sempre) e responde nas seguintes.
+struct TravadoNaPrimeira {
+    reply: Value,
+    chamadas: usize,
+}
+
+impl Transport for TravadoNaPrimeira {
+    async fn post(&mut self, _: &str, _: &CatalogRequest) -> Result<HttpResponse, ApiError> {
+        self.chamadas += 1;
+        if self.chamadas == 1 {
+            std::future::pending::<()>().await;
+        }
+        Ok(HttpResponse { headers: vec![], data: self.reply.clone() })
+    }
+}
+
+/// Uma future de sincronização descartada no meio do `await` não pode deixar
+/// a sincronização seguinte presa como "outra em andamento".
+#[test]
+fn future_descartada_no_meio_nao_trava_a_proxima_sincronizacao() {
+    let mut api = ApiV1::new(TravadoNaPrimeira { reply: response(SCHEMA, 120, 7), chamadas: 0 });
+    api.session_token = Some("token".into());
+    let mut e = BudgetSync::new(api, FakeHost::default(), SCHEMA);
+    let k = knowledge(7, 5, 100, SCHEMA);
+    {
+        let mut futura = Box::pin(e.internal_sync_budget_data_with_server(Some("bv-1"), Some(&k), SyncType::Delta));
+        let mut cx = Context::from_waker(Waker::noop());
+        assert!(futura.as_mut().poll(&mut cx).is_pending());
+    }
+
+    let r = e.sincronizar_esperando(Some("bv-1"), Some(&k), SyncType::Delta).unwrap();
+    assert!(!r.sync_cancelled_because_another_in_flight, "a flag ficou presa depois de descartar a future");
+    assert_eq!(e.host.completed, 1);
 }

@@ -5,8 +5,6 @@ let t;
 // Falso quando o navegador não deixou ler a cópia guardada: nesse caso a
 // página não grava, para não sobrescrever o que já está lá.
 let guardando = true;
-// Verdadeiro enquanto a sincronização está com o aparelho: nada mais mexe nele.
-let sincronizando = false;
 
 function esc(texto) {
   return String(texto).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -97,7 +95,6 @@ async function carregarAparelho() {
 }
 
 function render() {
-  if (sincronizando) return;
   const plano = JSON.parse(t.plano($("mes").value));
   const contas = JSON.parse(t.contas());
 
@@ -147,10 +144,6 @@ async function aposMudanca() {
 function acao(fn) {
   return async (evento) => {
     evento.preventDefault();
-    if (sincronizando) {
-      $("erro").textContent = "Espere a sincronização terminar.";
-      return;
-    }
     try {
       fn();
     } catch (e) {
@@ -181,21 +174,22 @@ async function sincronizarAgora(evento) {
     $("sincronizacao").textContent = "Informe o servidor e o token.";
     return;
   }
-  sincronizando = true;
   $("sincronizar").disabled = true;
   $("sincronizacao").textContent = "Sincronizando…";
+  let sucesso = false;
   try {
     await t.sincronizar(servidor, token);
+    sucesso = true;
     $("sincronizacao").textContent = `Sincronizado com ${servidor}.`;
   } catch (e) {
     $("sincronizacao").textContent = `Não deu para sincronizar: ${e}`;
   } finally {
     $("token").value = "";
-    sincronizando = false;
     $("sincronizar").disabled = false;
   }
   $("erro").textContent = "";
-  if (guardando) {
+  // Como o CLI: a cópia só é gravada depois de uma sincronização que deu certo.
+  if (sucesso && guardando) {
     try {
       await gravarCopia(t.paraJson());
     } catch (e) {
@@ -210,12 +204,15 @@ async function entrarNoOrcamento(evento) {
   evento.preventDefault();
   const id = $("entrar-id").value.trim();
   if (!id) return;
-  const pendentes = t.mudancasPendentes();
-  if (pendentes > 0 && !confirm(`Há ${pendentes} mudança(s) não enviada(s) neste aparelho. Entrar em outro orçamento as descarta. Continuar?`)) {
-    return;
-  }
   try {
-    t = Tostao.paraOrcamento(id);
+    const pendentes = t.mudancasPendentes();
+    if (pendentes > 0 && !confirm(`Há ${pendentes} mudança(s) não enviada(s) neste aparelho. Entrar em outro orçamento as descarta. Continuar?`)) {
+      return;
+    }
+    const nova = Tostao.paraOrcamento(id);
+    // O handle antigo é liberado antes de trocar; o wasm não o libera sozinho.
+    t.free();
+    t = nova;
     if (guardando) await gravarCopia(t.paraJson());
   } catch (e) {
     $("erro").textContent = `Não deu para entrar nesse orçamento (${e}).`;

@@ -5,7 +5,7 @@ use futures_executor::block_on;
 use tostao::aparelho::{formatar_valor, ler_mes, ler_valor, Aparelho, Destino, Plano, TipoDeConta};
 use tostao::api::{ApiError, HttpResponse, Transport};
 use tostao::dates::Date;
-use tostao::protocol::CatalogRequest;
+use tostao::protocol::{CatalogRequest, TOSTAO_SCHEMA_VERSION};
 
 #[test]
 fn le_valores_em_reais() {
@@ -123,4 +123,31 @@ fn o_token_nao_entra_na_copia_do_aparelho() {
     let erro = block_on(a.sincronizar(SemRede, "token-secreto-123")).unwrap_err();
     assert!(erro.to_string().contains("não deu para falar com o servidor"), "{erro}");
     assert!(!a.para_json().unwrap().contains("token-secreto-123"));
+}
+
+/// Transporte que responde uma sincronização válida, sem entidades do servidor.
+struct Responde;
+
+impl Transport for Responde {
+    async fn post(&mut self, _: &str, _: &CatalogRequest) -> Result<HttpResponse, ApiError> {
+        let data = serde_json::json!({
+            "changed_entities": {},
+            "current_server_knowledge": 5,
+            "error": null,
+            "schema_version_of_response": TOSTAO_SCHEMA_VERSION,
+            "schema_version_of_server": TOSTAO_SCHEMA_VERSION,
+            "server_knowledge_of_device": 0
+        });
+        Ok(HttpResponse { headers: vec![("X-Tostao-Server-Version".into(), "9.9.9".into())], data })
+    }
+}
+
+/// O caminho com sucesso também não põe o token na cópia do aparelho.
+#[test]
+fn sincronizacao_com_sucesso_nao_grava_o_token_na_copia() {
+    let mut a = Aparelho::novo_orcamento("Família");
+    a.criar_conta("Corrente", TipoDeConta::Corrente).unwrap();
+    let resultado = block_on(a.sincronizar(Responde, "token-secreto-456")).unwrap();
+    assert_eq!(resultado.server_app_version.as_deref(), Some("9.9.9"));
+    assert!(!a.para_json().unwrap().contains("token-secreto-456"));
 }

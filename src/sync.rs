@@ -1,6 +1,7 @@
 //! `BaseStore::internalSyncBudgetDataWithServer`, passo a passo, na mesma
 //! ordem de leituras e checks do bundle.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
@@ -81,12 +82,12 @@ pub struct BudgetSync<T: Transport, H: BudgetHost> {
     pub api: ApiV1<T>,
     pub host: H,
     pub budget_schema_version: i64,
-    budget_sync_in_progress: bool,
+    budget_sync_in_progress: Arc<AtomicBool>,
 }
 
 impl<T: Transport, H: BudgetHost> BudgetSync<T, H> {
     pub fn new(api: ApiV1<T>, host: H, budget_schema_version: i64) -> Self {
-        Self { api, host, budget_schema_version, budget_sync_in_progress: false }
+        Self { api, host, budget_schema_version, budget_sync_in_progress: Arc::new(AtomicBool::new(false)) }
     }
 
     pub async fn internal_sync_budget_data_with_server(
@@ -96,18 +97,17 @@ impl<T: Transport, H: BudgetHost> BudgetSync<T, H> {
         sync_type: SyncType,
     ) -> Result<SyncResult, SyncError> {
         let mut result = SyncResult::default();
-        if self.budget_sync_in_progress {
+        let Some(andamento) = Andamento::entrar(&self.budget_sync_in_progress) else {
             self.host.log(
                 LogLevel::Info,
                 "BaseStore::internalSyncBudgetDataWithServer:: Another sync is already in progress so the current sync request will be ignored.",
             );
             result.sync_cancelled_because_another_in_flight = true;
             return Ok(result);
-        }
-        self.budget_sync_in_progress = true;
+        };
         // `finally { this._budgetSyncInProgress = false }`
         let outcome = self.sync_inner(budget_version_id, knowledge, sync_type, &mut result).await;
-        self.budget_sync_in_progress = false;
+        drop(andamento);
 
         match outcome {
             Ok(Flow::EarlyReturn) => Ok(result),
@@ -309,6 +309,23 @@ impl<T: Transport, H: BudgetHost> BudgetSync<T, H> {
         }
         result.server_had_changed_entities = true;
         Ok(Flow::EarlyReturn)
+    }
+}
+
+/// A marca de "sincronização em andamento". Solta a marca ao sair, inclusive
+/// quando a future é descartada no meio de um `await` (aí não há `finally`).
+struct Andamento(Arc<AtomicBool>);
+
+impl Andamento {
+    /// `None` se outra sincronização já está em andamento.
+    fn entrar(marca: &Arc<AtomicBool>) -> Option<Self> {
+        marca.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).ok().map(|_| Self(Arc::clone(marca)))
+    }
+}
+
+impl Drop for Andamento {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
     }
 }
 
