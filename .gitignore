@@ -1,1 +1,5 @@
 target/
+# Arquivos de uso local do servidor e dos aparelhos
+*.db
+*.db-journal
+tostao-aparelho*.json
