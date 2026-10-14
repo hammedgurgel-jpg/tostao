@@ -23,7 +23,10 @@
 use std::collections::hash_map::RandomState;
 use std::collections::BTreeMap;
 use std::hash::{BuildHasher, Hasher};
-use std::path::{Path, PathBuf};
+#[cfg(feature = "arquivo")]
+use std::path::Path;
+#[cfg(feature = "arquivo")]
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
@@ -282,18 +285,22 @@ pub struct LinhaDeConta {
     pub saldo_compensado: i64,
 }
 
-/// Um aparelho com a cópia local no arquivo `caminho`.
+/// Um aparelho: a cópia local do orçamento, sem I/O. Quem guarda a cópia
+/// (um arquivo, o armazenamento do navegador) usa [`Aparelho::de_json`] e
+/// [`Aparelho::para_json`]; com a feature `arquivo`, a camada de arquivo
+/// (`abrir`, `salvar`…) faz isso num arquivo.
 #[derive(Debug)]
 pub struct Aparelho {
-    pub caminho: PathBuf,
     copia: CopiaLocal,
+    /// Arquivo da cópia, quando veio de [`Aparelho::abrir`] ou foi criada num.
+    #[cfg(feature = "arquivo")]
+    caminho: Option<PathBuf>,
 }
 
 impl Aparelho {
-    /// Cria um orçamento novo, com a categoria de receita ("A atribuir"),
-    /// num arquivo que ainda não existe.
-    pub fn criar_orcamento(caminho: impl AsRef<Path>, nome: &str) -> Result<Self, Erro> {
-        let mut a = Self::novo(caminho.as_ref(), &novo_id())?;
+    /// Cria um orçamento novo, com a categoria de receita ("A atribuir").
+    pub fn novo_orcamento(nome: &str) -> Self {
+        let mut a = Self::para_orcamento(&novo_id());
         let id = a.copia.orcamento.clone();
         a.mudar("be_budget", json!({ "id": id, "budget_name": nome, "is_tombstone": false }));
         a.mudar(
@@ -307,45 +314,37 @@ impl Aparelho {
                 "internal_name": CATEGORIA_RECEITA, "sortable_index": 0, "is_tombstone": false
             }),
         );
-        Ok(a)
+        a
     }
 
     /// Prepara um aparelho novo para um orçamento que já está no servidor;
     /// a primeira sincronização traz tudo.
-    pub fn entrar(caminho: impl AsRef<Path>, orcamento: &str) -> Result<Self, Erro> {
-        Self::novo(caminho.as_ref(), orcamento)
-    }
-
-    fn novo(caminho: &Path, orcamento: &str) -> Result<Self, Erro> {
-        if caminho.exists() {
-            return Err(Erro::Arquivo(format!("o arquivo {} já existe", caminho.display())));
-        }
-        let copia = CopiaLocal {
+    pub fn para_orcamento(orcamento: &str) -> Self {
+        Self::de_copia(CopiaLocal {
             orcamento: orcamento.to_owned(),
             aparelho: novo_id(),
             conhecimento: Conhecimento { versao_de_esquema: TOSTAO_SCHEMA_VERSION, ..Default::default() },
             ..Default::default()
-        };
-        Ok(Self { caminho: caminho.to_owned(), copia })
+        })
     }
 
-    pub fn abrir(caminho: impl AsRef<Path>) -> Result<Self, Erro> {
-        let caminho = caminho.as_ref();
-        let texto = std::fs::read_to_string(caminho).map_err(|e| {
-            Erro::Arquivo(format!("não deu para ler {}: {e} (crie o orçamento ou entre num antes)", caminho.display()))
-        })?;
-        let copia = serde_json::from_str(&texto)
-            .map_err(|e| Erro::Arquivo(format!("{} não é um arquivo do Tostão: {e}", caminho.display())))?;
-        Ok(Self { caminho: caminho.to_owned(), copia })
+    fn de_copia(copia: CopiaLocal) -> Self {
+        Self {
+            copia,
+            #[cfg(feature = "arquivo")]
+            caminho: None,
+        }
     }
 
-    /// Grava a cópia local (num arquivo ao lado, depois troca).
-    pub fn salvar(&self) -> Result<(), Erro> {
-        let texto = serde_json::to_string_pretty(&self.copia).map_err(|e| Erro::Arquivo(e.to_string()))?;
-        let temporario = self.caminho.with_extension("tmp");
-        std::fs::write(&temporario, texto)
-            .and_then(|()| std::fs::rename(&temporario, &self.caminho))
-            .map_err(|e| Erro::Arquivo(format!("não deu para gravar {}: {e}", self.caminho.display())))
+    /// Lê a cópia local de um texto JSON (o que [`Aparelho::para_json`] escreve).
+    pub fn de_json(texto: &str) -> Result<Self, Erro> {
+        let copia = serde_json::from_str(texto).map_err(|e| Erro::Arquivo(format!("não é uma cópia do Tostão: {e}")))?;
+        Ok(Self::de_copia(copia))
+    }
+
+    /// A cópia local como JSON, para quem guarda o aparelho gravar.
+    pub fn para_json(&self) -> Result<String, Erro> {
+        serde_json::to_string_pretty(&self.copia).map_err(|e| Erro::Arquivo(e.to_string()))
     }
 
     pub fn orcamento(&self) -> &str {
@@ -516,7 +515,8 @@ impl Aparelho {
     }
 
     /// Sincronização incremental: envia as mudanças pendentes e recebe as
-    /// do servidor. Grava o arquivo se der certo.
+    /// do servidor. Não grava nada: quem guarda a cópia grava depois, com
+    /// [`Aparelho::para_json`] (ou `salvar`, com a feature `arquivo`).
     pub fn sincronizar<T: Transport>(&mut self, transport: T, token: &str) -> Result<SyncResult, Erro> {
         let mut api = ApiV1::new(transport);
         api.session_token = Some(token.to_owned());
@@ -530,7 +530,6 @@ impl Aparelho {
             return Err(Erro::PermissaoNegada(e));
         }
         self.copia.conhecimento = (*knowledge.lock().unwrap_or_else(|p| p.into_inner())).into();
-        self.salvar()?;
         Ok(resultado)
     }
 
@@ -624,6 +623,61 @@ impl Aparelho {
     }
 }
 
+/// Leitura e gravação da cópia em arquivo: uma camada fina sobre
+/// [`Aparelho::de_json`] e [`Aparelho::para_json`].
+#[cfg(feature = "arquivo")]
+impl Aparelho {
+    /// Cria um orçamento novo num arquivo que ainda não existe.
+    pub fn criar_orcamento(caminho: impl AsRef<Path>, nome: &str) -> Result<Self, Erro> {
+        let caminho = caminho_livre(caminho.as_ref())?;
+        let mut a = Self::novo_orcamento(nome);
+        a.caminho = Some(caminho);
+        Ok(a)
+    }
+
+    /// Prepara um aparelho novo, num arquivo que ainda não existe, para um
+    /// orçamento que já está no servidor.
+    pub fn entrar(caminho: impl AsRef<Path>, orcamento: &str) -> Result<Self, Erro> {
+        let caminho = caminho_livre(caminho.as_ref())?;
+        let mut a = Self::para_orcamento(orcamento);
+        a.caminho = Some(caminho);
+        Ok(a)
+    }
+
+    pub fn abrir(caminho: impl AsRef<Path>) -> Result<Self, Erro> {
+        let caminho = caminho.as_ref();
+        let texto = std::fs::read_to_string(caminho).map_err(|e| {
+            Erro::Arquivo(format!("não deu para ler {}: {e} (crie o orçamento ou entre num antes)", caminho.display()))
+        })?;
+        let mut a = Self::de_json(&texto).map_err(|e| Erro::Arquivo(format!("{}: {e}", caminho.display())))?;
+        a.caminho = Some(caminho.to_owned());
+        Ok(a)
+    }
+
+    /// Grava a cópia no arquivo de onde veio (num arquivo ao lado, depois troca).
+    pub fn salvar(&self) -> Result<(), Erro> {
+        let caminho = self.caminho().ok_or_else(|| Erro::Arquivo("este aparelho não tem arquivo para gravar".into()))?;
+        let texto = self.para_json()?;
+        let temporario = caminho.with_extension("tmp");
+        std::fs::write(&temporario, texto)
+            .and_then(|()| std::fs::rename(&temporario, caminho))
+            .map_err(|e| Erro::Arquivo(format!("não deu para gravar {}: {e}", caminho.display())))
+    }
+
+    /// O arquivo da cópia, se ela tiver um.
+    pub fn caminho(&self) -> Option<&Path> {
+        self.caminho.as_deref()
+    }
+}
+
+#[cfg(feature = "arquivo")]
+fn caminho_livre(caminho: &Path) -> Result<PathBuf, Erro> {
+    if caminho.exists() {
+        return Err(Erro::Arquivo(format!("o arquivo {} já existe", caminho.display())));
+    }
+    Ok(caminho.to_owned())
+}
+
 /// Id novo, aleatório, no formato de um UUID (sem as garantias de versão).
 pub fn novo_id() -> String {
     let parte = || RandomState::new().build_hasher().finish();
@@ -703,12 +757,4 @@ pub fn ler_mes(texto: &str) -> Result<Date, Erro> {
         .or_else(|_| Date::parse_from_str(t, "%Y-%m-%d"))
         .map(start_of_month)
         .map_err(|_| Erro::Valor(format!("mês inválido: \"{texto}\" (use AAAA-MM)")))
-}
-
-/// A data de hoje, em UTC.
-pub fn hoje() -> Date {
-    let segundos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs() as i64);
-    chrono::DateTime::from_timestamp(segundos, 0).map_or(Date::default(), |d| d.date_naive())
 }

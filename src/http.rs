@@ -18,24 +18,36 @@
 //! O servidor cria o orçamento na primeira sincronização do usuário, porque
 //! a operação de criar orçamento do YNAB não foi lida.
 
+#[cfg(feature = "servidor")]
 use std::io::Read;
 
-use serde_json::{json, Value};
+#[cfg(feature = "servidor")]
+use serde_json::json;
+use serde_json::Value;
 
 use crate::api::{ApiError, HttpResponse, ServerError, Transport};
-use crate::protocol::{operation, CatalogRequest, CATALOG_PATH};
+#[cfg(feature = "servidor")]
+use crate::protocol::operation;
+use crate::protocol::CatalogRequest;
+#[cfg(feature = "servidor")]
+use crate::protocol::CATALOG_PATH;
+#[cfg(feature = "servidor")]
 use crate::server::{SyncServer, ERR_INVALID_REQUEST};
 
 /// Cabeçalho com o id do aparelho (nome escolhido aqui).
 pub const DEVICE_ID_HEADER: &str = "X-Tostao-Device-Id";
 
+#[cfg(feature = "servidor")]
 pub const ERR_UNAUTHORIZED: &str = "unauthorized";
+#[cfg(feature = "servidor")]
 pub const ERR_NOT_FOUND: &str = "not_found";
 
 /// Corpo maior do que isto é recusado.
+#[cfg(feature = "servidor")]
 const MAX_BODY: u64 = 64 * 1024 * 1024;
 
 /// Quem pode usar o servidor: um usuário fixo e o token dele.
+#[cfg(feature = "servidor")]
 #[derive(Debug, Clone)]
 pub struct Acesso {
     pub usuario: String,
@@ -43,6 +55,7 @@ pub struct Acesso {
 }
 
 /// Atende os pedidos, um de cada vez, até o `tiny_http` parar.
+#[cfg(feature = "servidor")]
 pub fn servir(http: &tiny_http::Server, servidor: &mut SyncServer, acesso: &Acesso) {
     for request in http.incoming_requests() {
         atender(servidor, acesso, request);
@@ -50,6 +63,7 @@ pub fn servir(http: &tiny_http::Server, servidor: &mut SyncServer, acesso: &Aces
 }
 
 /// Atende um pedido e responde.
+#[cfg(feature = "servidor")]
 pub fn atender(servidor: &mut SyncServer, acesso: &Acesso, mut request: tiny_http::Request) {
     let (status, headers, body) = match responder(servidor, acesso, &mut request) {
         Ok(r) => (200, r.headers, r.data),
@@ -64,6 +78,7 @@ pub fn atender(servidor: &mut SyncServer, acesso: &Acesso, mut request: tiny_htt
     let _ = request.respond(response);
 }
 
+#[cfg(feature = "servidor")]
 fn responder(
     servidor: &mut SyncServer,
     acesso: &Acesso,
@@ -105,11 +120,13 @@ fn responder(
     servidor.handle_catalog(&acesso.usuario, &device_id, &catalog)
 }
 
+#[cfg(feature = "servidor")]
 fn erro(status_code: u16, id: &str, data: Value) -> ServerError {
     ServerError { status_code, id: id.into(), data: Some(data) }
 }
 
 /// [`Transport`] por HTTP, para um aparelho.
+#[cfg(feature = "http")]
 pub struct HttpTransport {
     /// Ex.: `http://127.0.0.1:8080`, sem a barra final.
     pub servidor: String,
@@ -118,6 +135,7 @@ pub struct HttpTransport {
     agent: ureq::Agent,
 }
 
+#[cfg(feature = "http")]
 impl HttpTransport {
     pub fn new(servidor: &str, token: &str, device_id: &str) -> Self {
         Self {
@@ -129,6 +147,7 @@ impl HttpTransport {
     }
 }
 
+#[cfg(feature = "http")]
 impl Transport for HttpTransport {
     fn post(&mut self, path: &str, body: &CatalogRequest) -> Result<HttpResponse, ApiError> {
         let body = serde_json::to_string(body).map_err(|e| ApiError::Transport(e.to_string()))?;

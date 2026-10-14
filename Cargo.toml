@@ -5,11 +5,47 @@ edition = "2021"
 description = "Tostão: app de orçamento por envelopes para a família, com sincronização entre aparelhos e servidor próprio"
 publish = false
 
+[features]
+# Padrão: tudo. Com `--no-default-features` sobra o núcleo (motor, aparelho
+# em memória), que compila para wasm32-unknown-unknown.
+default = ["servidor", "http", "arquivo"]
+# Leitura e gravação da cópia do aparelho em arquivo (`Aparelho::abrir`, `salvar`…).
+arquivo = []
+# Transporte HTTP do aparelho (`http::HttpTransport`, com `ureq`).
+http = ["dep:ureq"]
+# Servidor: `server::SyncServer` (SQLite) e o atendimento HTTP (`tiny_http`).
+servidor = ["http", "dep:rusqlite", "dep:tiny_http"]
+
 [dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["std"] }
-rusqlite = { version = "0.40.2", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 # preserve_order: os objetos JSON mantêm a ordem de inserção dos campos
 serde_json = { version = "1", features = ["preserve_order"] }
-tiny_http = "0.12"
-ureq = { version = "2", default-features = false }
+rusqlite = { version = "0.40.2", features = ["bundled"], optional = true }
+tiny_http = { version = "0.12", optional = true }
+ureq = { version = "2", default-features = false, optional = true }
+
+[[bin]]
+name = "tostao"
+path = "src/bin/tostao.rs"
+required-features = ["http", "arquivo"]
+
+[[bin]]
+name = "tostao-servidor"
+path = "src/bin/tostao-servidor.rs"
+required-features = ["servidor"]
+
+[[test]]
+name = "aparelho"
+path = "tests/aparelho.rs"
+required-features = ["arquivo"]
+
+[[test]]
+name = "server"
+path = "tests/server.rs"
+required-features = ["servidor"]
+
+[[test]]
+name = "ponta_a_ponta"
+path = "tests/ponta_a_ponta.rs"
+required-features = ["servidor", "http", "arquivo"]

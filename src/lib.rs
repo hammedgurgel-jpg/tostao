@@ -26,9 +26,11 @@ pub mod api;
 pub mod calc;
 pub mod dates;
 pub mod goals;
+#[cfg(feature = "http")]
 pub mod http;
 pub mod knowledge;
 pub mod motor;
 pub mod protocol;
+#[cfg(feature = "servidor")]
 pub mod server;
 pub mod sync;

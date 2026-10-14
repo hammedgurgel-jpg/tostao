@@ -3,9 +3,8 @@
 use std::process::ExitCode;
 
 use chrono::Datelike;
-use tostao::aparelho::{
-    formatar_valor, hoje, ler_data, ler_mes, ler_valor, Aparelho, Destino, Erro, LinhaDoPlano, TipoDeConta,
-};
+use tostao::aparelho::{formatar_valor, ler_data, ler_mes, ler_valor, Aparelho, Destino, Erro, LinhaDoPlano, TipoDeConta};
+use tostao::dates::Date;
 use tostao::http::HttpTransport;
 
 const AJUDA: &str = "\
@@ -173,6 +172,7 @@ fn executar() -> Result<(), Box<dyn std::error::Error>> {
             let enviando = a.mudancas_pendentes();
             let transporte = HttpTransport::new(&servidor, &token()?, a.id());
             let r = a.sincronizar(transporte, &token()?)?;
+            a.salvar()?;
             let conhecimento = r.server_response.map_or(0, |r| r.current_server_knowledge);
             println!("Sincronizado com {servidor}: {enviando} mudança(s) enviada(s); conhecimento do servidor {conhecimento}.");
         }
@@ -228,7 +228,7 @@ const MESES: [&str; 12] = [
     "dezembro",
 ];
 
-fn mostrar_plano(a: &Aparelho, mes: tostao::dates::Date) -> Result<(), Erro> {
+fn mostrar_plano(a: &Aparelho, mes: Date) -> Result<(), Erro> {
     let plano = a.plano(mes)?;
     println!("Plano de {} de {}", MESES[plano.mes.month0() as usize], plano.mes.year());
     match plano.a_atribuir {
@@ -257,4 +257,13 @@ fn mostrar_plano(a: &Aparelho, mes: tostao::dates::Date) -> Result<(), Erro> {
     }
     avisar_pendentes(a);
     Ok(())
+}
+
+/// A data de hoje, em UTC. O relógio fica no aparelho de linha de comando,
+/// fora do núcleo, que também roda onde não há relógio do sistema.
+fn hoje() -> Date {
+    let segundos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64);
+    chrono::DateTime::from_timestamp(segundos, 0).map_or(Date::default(), |d| d.date_naive())
 }

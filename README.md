@@ -30,6 +30,20 @@ ponta, que sobe o servidor e roda o roteiro 1 por dois aparelhos):
 cargo test
 ```
 
+## Features e build para wasm
+
+O crate tem três features, todas ligadas por padrão: `servidor` (o
+`tostao-servidor`, com SQLite e `tiny_http`; liga `http`), `http` (o transporte
+HTTP do `tostao`, com `ureq`) e `arquivo` (ler e gravar a cópia do aparelho em
+arquivo). O núcleo (o motor e o aparelho em memória, com
+`Aparelho::de_json` e `para_json`) não depende de nenhuma delas e compila para
+WebAssembly:
+
+```powershell
+rustup target add wasm32-unknown-unknown
+cargo build --target wasm32-unknown-unknown --lib --no-default-features
+```
+
 ## Usar só num aparelho, sem servidor
 
 O aparelho calcula sozinho: o `plano` e o `contas` saem do motor rodando
