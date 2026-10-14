@@ -1140,7 +1140,60 @@ Teste `roteiro_12_conferido`. Lançado pelo usuário; vieram capturas do fim do 
 - **12B**: Cartão −30, Cartão 2 −50, Cartão 3 −30. Outubro: Farmácia 60 / +30 / 90, Mercado 150 / −150 / 0, **Pagamento do Cartão 30, do Cartão 2 50 e do Cartão 3 30** (verdes), Ready to Assign **740**; novembro com 30, 50 e 30, Farmácia 90, Ready to Assign **540**. Setembro: Ready to Assign 750 (890 − 140 atribuídos a mais em outubro). **Bate com B**; M (40 / 70 / 0), O (30 / 80 / 0) e P (35 / 75 / 0) descartadas.
 - **12C**: Cartão 2 **+50**, e o cabeçalho dele mostrou Payment 0. Outubro: Mercado 150 / −50 / 100, Farmácia 90, **Pagamento do Cartão 30, do Cartão 2 0 e do Cartão 3 30**, Ready to Assign 740; novembro com 30, 0 e 30, Ready to Assign 540. **Bate com B** e com o limite do roteiro 8 por cartão.
 - **Regra**: na categoria, os estornos no crédito **não se compensam** com as saídas. Cada estorno sai inteiro do pagamento do próprio cartão (até o limite de `gasto_coberto_limitado`), e cada saída coberta passa inteira para o pagamento do seu. A soma dos pagamentos fica igual à dívida dos cartões (12B: 30 + 50 + 30).
-- **Motor ajustado**: `funded_by_card` em `src/calc.rs` dá a cada estorno o valor inteiro, e o gasto coberto (o `budgeted_credit_outflows` menos os estornos) vai para as saídas, da maior para a menor. Com a categoria estourada e estornos no mesmo mês, a regra é a mesma, mas esse caso **não foi visto**.
+- **Motor ajustado**: `funded_by_card` em `src/calc.rs` dá a cada estorno o valor inteiro, e o gasto coberto (o `budgeted_credit_outflows` menos os estornos) vai para as saídas, da maior para a menor. Com a categoria estourada e estornos no mesmo mês, a regra é a mesma, mas esse caso **não foi visto** (roteiro 13).
+
+### Roteiro 13 — categoria estourada com estorno no mesmo mês
+
+**Para que serve.** O roteiro 12 mostrou que, numa categoria com saldo, cada estorno sai inteiro do pagamento do próprio cartão. Falta ver a categoria **estourada no crédito** com um estorno no mesmo mês. Candidatas (previsões de um teste temporário):
+- **B** (o motor hoje): o estorno sai inteiro do pagamento do cartão dele, e o gasto coberto das saídas é o dinheiro da categoria **mais** o estorno, da maior saída para a menor.
+- **N** (o motor antes do 12): o estorno não mexe em pagamento nenhum; o gasto coberto é só o dinheiro da categoria.
+- **D**: o estorno sai do pagamento do cartão dele, mas o gasto coberto continua só o dinheiro da categoria (o estorno conta duas vezes contra os pagamentos).
+
+Todas as datas são **14/10/2026**. Lance pela página da própria conta, nunca pela All Accounts.
+
+#### Ponto de partida
+
+O fim do roteiro 12: Cartão −30 (Mercado 40, estorno de 10 na Farmácia), Cartão 2 +50 (estorno de 50 na Farmácia), Cartão 3 −30 (Farmácia 30); Mercado 150 / −50 / 100; Farmácia 60 / +30 / 90.
+
+**Passo 0 — limpeza.**
+
+| # | Onde | O que fazer |
+|---|---|---|
+| 1 | Cartão 2 | Apagar o estorno de **50** na Farmácia (14/10) |
+| 2 | Cartão 3 | Apagar a saída de **30** na Farmácia (14/10) |
+
+Confira: Cartão / Cartão 2 / Cartão 3 **−30 / 0 / 0**; Farmácia 60 / +10 / **70**; Pagamento do Cartão **30**, do Cartão 2 e do Cartão 3 **0**; Ready to Assign 740 / 540. (Fica o estorno de 10 no Cartão, que tem dívida pelo Mercado de 40.)
+
+#### Passos
+
+**13A — a Farmácia estoura no crédito.**
+
+| # | Abrir a conta | Date | Payee | Category | Valor | Sai de → chega em | Depois de salvar |
+|---|---|---|---|---|---|---|---|
+| A1 | **Cartão 3** | 14/10/2026 | "Farmácia X" | **Farmácia** | **Outflow 100** | Cartão 3 (vira dívida) → ninguém | Cartão 3 **−100**; Farmácia 60 / −90 / **−30** (amarelo) |
+
+| Oct: Available | B | N | D |
+|---|---|---|---|
+| Pagamento do Cartão (estorno 10) | **30** | **40** | **30** |
+| Pagamento do Cartão 3 (saída 100) | **70** | **60** | **60** |
+
+Iguais nas três: Farmácia −30 amarelo (estouro no crédito); Ready to Assign 740 / 540; novembro com os mesmos pagamentos. No B, a soma dos pagamentos (100) é a dívida dos cartões (130) menos o estouro (30).
+
+**13B — mais um estorno, num cartão sem dívida.**
+
+| # | Abrir a conta | Date | Payee | Category | Valor | Sai de → chega em | Depois de salvar |
+|---|---|---|---|---|---|---|---|
+| B1 | **Cartão 2** | 14/10/2026 | "Farmácia X" | **Farmácia** | **Inflow 20** (entrada) | a loja → Cartão 2 | Cartão 2 **+20**; Farmácia 60 / −70 / **−10** (amarelo) |
+
+| Oct: Available | B | N | D |
+|---|---|---|---|
+| Pagamento do Cartão | 30 | 40 | 30 |
+| Pagamento do Cartão 2 | 0 | 0 | 0 |
+| Pagamento do Cartão 3 | **90** | **60** | **60** |
+
+Iguais nas três: Ready to Assign 740 / 540. O estorno no Cartão 2 não sai do pagamento (o cartão fica positivo, limite do roteiro 8). No B, ele ainda assim cobre 20 da saída do Cartão 3. Se der **70** no Cartão 3, o estorno que o limite segura não cobre as saídas.
+
+Mande uma captura do plano de outubro e de novembro e da tela All Accounts no fim de cada passo.
 
 ## 10. Implicações para o Tostão
 
