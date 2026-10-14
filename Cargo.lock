@@ -596,6 +596,7 @@ dependencies = [
  "serde_json",
  "tiny_http",
  "ureq",
+ "wasm-bindgen",
 ]
 
 [[package]]

@@ -15,6 +15,10 @@ arquivo = []
 http = ["dep:ureq"]
 # Servidor: `server::SyncServer` (SQLite) e o atendimento HTTP (`tiny_http`).
 servidor = ["http", "dep:rusqlite", "dep:tiny_http"]
+# Ponte para o navegador (`web`): o núcleo exposto ao JavaScript com
+# wasm-bindgen. Não é padrão; ver `web/construir.ps1`. A versão é fixa para
+# bater com o CLI `wasm-bindgen` usado no build.
+web = ["dep:wasm-bindgen"]
 
 [dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["std"] }
@@ -27,6 +31,7 @@ ureq = { version = "2", default-features = false, optional = true }
 # Ids aleatórios (ver `aparelho::novo_id`). No navegador, a fonte é
 # `crypto.getRandomValues`, pela feature `js`.
 getrandom = "0.2"
+wasm-bindgen = { version = "=0.2.129", optional = true }
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tostão</title>
+  <style>
+    :root { --fundo: #f7f7f5; --texto: #1d1d1b; --suave: #6b6b66; --linha: #e2e2dd; --cartao: #ffffff; --negativo: #b3261e; --destaque: #1f6f5b; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) { --fundo: #161614; --texto: #ecebe6; --suave: #9c9b94; --linha: #2e2e2a; --cartao: #1f1f1c; --negativo: #ff8a80; --destaque: #6fd0b5; }
+    }
+    :root[data-theme="dark"] { --fundo: #161614; --texto: #ecebe6; --suave: #9c9b94; --linha: #2e2e2a; --cartao: #1f1f1c; --negativo: #ff8a80; --destaque: #6fd0b5; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; background: var(--fundo); color: var(--texto); font: 16px/1.4 system-ui, sans-serif; }
+    main { max-width: 640px; margin: 0 auto; display: grid; gap: 16px; }
+    h1 { font-size: 22px; margin: 0; }
+    h2 { font-size: 16px; margin: 0 0 8px; color: var(--suave); font-weight: 600; }
+    section { background: var(--cartao); border: 1px solid var(--linha); border-radius: 12px; padding: 14px; }
+    form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+    label { display: grid; gap: 4px; font-size: 13px; color: var(--suave); flex: 1 1 140px; }
+    input, select, button { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--linha); background: var(--fundo); color: var(--texto); min-width: 0; }
+    button { background: var(--destaque); color: #fff; border: none; cursor: pointer; flex: 0 0 auto; }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    th, td { text-align: right; padding: 6px 4px; border-bottom: 1px solid var(--linha); }
+    th:first-child, td:first-child { text-align: left; }
+    th { font-size: 12px; color: var(--suave); font-weight: 500; }
+    .grupo td { font-weight: 600; text-align: left; padding-top: 12px; border-bottom: none; }
+    .negativo { color: var(--negativo); }
+    .aviso { color: var(--negativo); min-height: 1.4em; font-size: 14px; }
+    .cabecalho { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }
+    .suave { color: var(--suave); font-size: 14px; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="cabecalho">
+    <h1 id="titulo">Tostão</h1>
+    <label style="flex: 0 0 auto">Mês <input id="mes" type="month"></label>
+  </div>
+  <div id="erro" class="aviso" role="alert"></div>
+
+  <section>
+    <h2>A atribuir e plano do mês</h2>
+    <p class="suave" id="a-atribuir"></p>
+    <table>
+      <thead><tr><th>Categoria</th><th>Atribuído</th><th>Atividade</th><th>Disponível</th></tr></thead>
+      <tbody id="plano"></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Contas</h2>
+    <table>
+      <thead><tr><th>Conta</th><th>Saldo</th><th>Compensado</th></tr></thead>
+      <tbody id="contas"></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Lançar transação</h2>
+    <form id="form-lancar">
+      <label>Conta <select id="lancar-conta" required></select></label>
+      <label>Valor (use - para saída) <input id="lancar-valor" inputmode="decimal" placeholder="-80" required></label>
+      <label>Categoria <select id="lancar-categoria"></select></label>
+      <label>Data <input id="lancar-data" type="date" required></label>
+      <button type="submit">Lançar</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>Atribuir a uma categoria</h2>
+    <form id="form-atribuir">
+      <label>Categoria <select id="atribuir-categoria" required></select></label>
+      <label>Valor <input id="atribuir-valor" inputmode="decimal" placeholder="50" required></label>
+      <button type="submit">Atribuir</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>Nova conta</h2>
+    <form id="form-conta">
+      <label>Nome <input id="conta-nome" required></label>
+      <label>Tipo
+        <select id="conta-tipo">
+          <option value="corrente">Corrente</option>
+          <option value="poupanca">Poupança</option>
+          <option value="dinheiro">Dinheiro</option>
+          <option value="cartao">Cartão</option>
+          <option value="acompanhamento">Acompanhamento</option>
+        </select>
+      </label>
+      <button type="submit">Criar conta</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>Novo grupo</h2>
+    <form id="form-grupo">
+      <label>Nome <input id="grupo-nome" placeholder="Contas fixas" required></label>
+      <button type="submit">Criar grupo</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>Nova categoria</h2>
+    <form id="form-categoria">
+      <label>Grupo <select id="categoria-grupo" required></select></label>
+      <label>Nome <input id="categoria-nome" placeholder="Mercado" required></label>
+      <button type="submit">Criar categoria</button>
+    </form>
+  </section>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

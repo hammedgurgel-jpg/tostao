@@ -3,3 +3,5 @@ target/
 *.db
 *.db-journal
 tostao-aparelho*.json
+# Build do navegador (`web/construir.ps1`)
+web/pkg/

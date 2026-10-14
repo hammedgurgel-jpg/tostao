@@ -44,6 +44,22 @@ rustup target add wasm32-unknown-unknown
 cargo build --target wasm32-unknown-unknown --lib --no-default-features
 ```
 
+## Página no navegador (em teste)
+
+Uma página em `web/` roda o núcleo em WebAssembly, sem servidor: cria
+orçamento, contas, grupos e categorias, lança transações e mostra o plano e os
+saldos. Ainda não guarda nada: recarregar a página começa de novo.
+
+```powershell
+cargo install wasm-bindgen-cli --version 0.2.129 --locked
+powershell -ExecutionPolicy Bypass -File web\construir.ps1
+cd web
+python -m http.server 8000
+```
+
+Abra `http://127.0.0.1:8000/index.html`. O `construir.ps1` gera `web/pkg/`
+(ignorado pelo git).
+
 ## Usar só num aparelho, sem servidor
 
 O aparelho calcula sozinho: o `plano` e o `contas` saem do motor rodando

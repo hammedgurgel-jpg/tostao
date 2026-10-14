@@ -34,3 +34,5 @@ pub mod protocol;
 #[cfg(feature = "servidor")]
 pub mod server;
 pub mod sync;
+#[cfg(feature = "web")]
+pub mod web;
