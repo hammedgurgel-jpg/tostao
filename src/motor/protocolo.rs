@@ -4,6 +4,9 @@
 //!
 //! Nomes dos campos como no mapeamento do servidor no bundle
 //! (`serverObjectToEntity` de cada entidade).
+//!
+//! No caminho de volta, [`entidades_dos_calculos`] escreve os cálculos como
+//! entidades `be_*_calculations` (formato não conferido).
 
 use std::collections::HashMap;
 
@@ -122,6 +125,93 @@ pub fn orcamento_das_entidades(e: &IncomingChangedEntities) -> Result<Orcamento,
     }
 
     Ok(orcamento)
+}
+
+/// Tipo das entidades com os cálculos do mês.
+pub const CALCULOS_DO_MES: &str = "be_monthly_budget_calculations";
+/// Tipo das entidades com os cálculos de categoria por mês.
+pub const CALCULOS_DE_CATEGORIA: &str = "be_monthly_subcategory_budget_calculations";
+/// Tipo das entidades com os saldos das contas.
+pub const CALCULOS_DE_CONTA: &str = "be_account_calculations";
+
+/// Os cálculos como entidades `be_*_calculations`, para o servidor devolver
+/// aos aparelhos: `(tipo, entidade)`, cada entidade com `id` e
+/// `is_tombstone: false`.
+///
+/// **Não conferido.** Os nomes dos tipos vêm da captura de rede (ver
+/// [`IncomingChangedEntities`]), mas os campos e os ids não foram vistos:
+/// os campos são os nomes de `SubCategoryMonthCalc`, `MonthCalc`,
+/// `GoalCalc` e `SaldoConta` em snake_case, como o servidor manda
+/// `over_spent`; os ids são `mbc/2026-10`, `mcbc/2026-10/<categoria>` e
+/// `ac/<conta>`, escolhidos aqui. O "A atribuir" não vai: o aparelho o
+/// calcula com [`crate::calc::calculate_left_to_budget_for_monthly_budget`],
+/// como o cliente do YNAB.
+pub fn entidades_dos_calculos(calculos: &super::Calculos) -> Vec<(&'static str, Value)> {
+    use serde_json::json;
+    let mes = |d: Date| d.format("%Y-%m").to_string();
+    let mut out = Vec::new();
+    for m in &calculos.meses {
+        let c = &m.calculo;
+        let s = &m.sem_categoria;
+        out.push((
+            CALCULOS_DO_MES,
+            json!({
+                "id": format!("mbc/{}", mes(m.mes)),
+                "month": m.mes.to_string(),
+                "immediate_income": c.immediate_income,
+                "additional_to_be_budgeted": c.additional_to_be_budgeted,
+                "budgeted": c.budgeted,
+                "over_spent": c.over_spent,
+                "available_to_budget": c.available_to_budget,
+                "uncategorized_cash_outflows": s.cash_outflows.unwrap_or(0),
+                "uncategorized_credit_outflows": s.credit_outflows.unwrap_or(0),
+                "uncategorized_balance": s.balance.unwrap_or(0),
+                "is_tombstone": false,
+            }),
+        ));
+        for cat in &m.categorias {
+            let c = &cat.calculo;
+            out.push((
+                CALCULOS_DE_CATEGORIA,
+                json!({
+                    "id": format!("mcbc/{}/{}", mes(m.mes), cat.categoria),
+                    "month": m.mes.to_string(),
+                    "entities_subcategory_id": cat.categoria,
+                    "budgeted": c.budgeted,
+                    "cash_outflows": c.cash_outflows.unwrap_or(0),
+                    "credit_outflows": c.credit_outflows.unwrap_or(0),
+                    "balance": c.balance.unwrap_or(0),
+                    "balance_previous_month": c.balance_previous_month,
+                    "budgeted_cash_outflows": c.budgeted_cash_outflows,
+                    "unbudgeted_cash_outflows": c.unbudgeted_cash_outflows,
+                    "budgeted_credit_outflows": c.budgeted_credit_outflows,
+                    "unbudgeted_credit_outflows": c.unbudgeted_credit_outflows,
+                    "budgeted_spending": c.budgeted_spending,
+                    "goal_target": c.goal.target,
+                    "goal_under_funded": c.goal.under_funded,
+                    "goal_overall_funded": c.goal.overall_funded,
+                    "goal_overall_left": c.goal.overall_left,
+                    "goal_percentage_complete": c.goal.percentage_complete,
+                    "goal_expected_completion": c.goal.expected_completion,
+                    "is_tombstone": false,
+                }),
+            ));
+        }
+    }
+    for s in &calculos.contas {
+        out.push((
+            CALCULOS_DE_CONTA,
+            json!({
+                "id": format!("ac/{}", s.conta),
+                "entities_account_id": s.conta,
+                "balance": s.saldo,
+                "cleared_balance": s.saldo_compensado,
+                "uncleared_balance": s.saldo - s.saldo_compensado,
+                "is_tombstone": false,
+            }),
+        ));
+    }
+    out
 }
 
 fn removida(v: &Value) -> bool {

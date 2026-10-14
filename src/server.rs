@@ -9,7 +9,17 @@
 //!
 //! Entidades são guardadas como texto JSON com um campo `id` texto; a última
 //! versão recebida substitui a anterior inteira.
+//!
+//! Depois de cada lote aceito, o servidor recalcula o orçamento inteiro com
+//! [`motor::calcular`] e guarda, no mesmo conhecimento do lote, os cálculos
+//! que mudaram, como entidades `be_*_calculations`
+//! ([`entidades_dos_calculos`]). Cálculos que deixaram de existir voltam
+//! como removidos. Se alguma entidade não der para ler, os cálculos ficam
+//! como estavam e o lote entra mesmo assim. Os meses vão do primeiro com
+//! transação ou atribuição até um depois do último, para que o aparelho
+//! sempre tenha o mês seguinte.
 
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -18,6 +28,11 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::{json, Map, Value};
 
 use crate::api::{ApiError, HttpResponse, ServerError, Transport};
+use crate::dates::add_months;
+use crate::motor;
+use crate::motor::protocolo::{
+    entidades_dos_calculos, orcamento_das_entidades, CALCULOS_DE_CATEGORIA, CALCULOS_DE_CONTA, CALCULOS_DO_MES,
+};
 use crate::protocol::{
     operation, CatalogRequest, IncomingChangedEntities, SyncBudgetDataRequest,
     SyncBudgetDataResponse, SyncType, CATALOG_PATH, SERVER_VERSION_HEADER,
@@ -73,6 +88,10 @@ const LIST_KINDS: &[&str] = &[
     "be_money_movements",
     "be_money_movement_groups",
 ];
+
+/// Tipos que só o servidor escreve: os cálculos do [`motor`], refeitos a
+/// cada lote aceito.
+const CALC_KINDS: &[&str] = &[CALCULOS_DE_CONTA, CALCULOS_DO_MES, CALCULOS_DE_CATEGORIA];
 
 /// Tipos que vão e voltam como um objeto só.
 const SINGLE_KINDS: &[&str] = &["be_budget", "be_expected_income"];
@@ -222,6 +241,8 @@ impl SyncServer {
                 for (kind, id, value) in incoming {
                     upsert.execute(params![budget_id, kind, id, value.to_string(), current]).map_err(internal)?;
                 }
+                drop(upsert);
+                recalculate(&tx, budget_id, current)?;
             }
             known = request.ending_device_knowledge;
             tx.execute(
@@ -299,6 +320,7 @@ fn changed_since(conn: &Connection, budget_id: &str, since: i64) -> Result<Incom
     for kind in LIST_KINDS
         .iter()
         .chain(GROUP_KINDS.iter().flat_map(|g| [&g.parent_kind, &g.children_kind]))
+        .chain(CALC_KINDS)
     {
         out.insert((*kind).to_owned(), Value::Array(Vec::new()));
     }
@@ -324,6 +346,62 @@ fn changed_since(conn: &Connection, budget_id: &str, since: i64) -> Result<Incom
         }
     }
     serde_json::from_value(Value::Object(out)).map_err(internal)
+}
+
+/// Refaz os cálculos do orçamento e grava, com o conhecimento `knowledge`,
+/// os que mudaram. Os que sumiram são gravados como removidos.
+fn recalculate(conn: &Connection, budget_id: &str, knowledge: i64) -> Result<(), ServerError> {
+    let Ok(orcamento) = orcamento_das_entidades(&changed_since(conn, budget_id, 0)?) else {
+        return Ok(());
+    };
+    let mut calculos = motor::calcular(&orcamento);
+    if let Some(ultimo) = calculos.meses.last().map(|m| m.mes) {
+        calculos = motor::calcular(&motor::Orcamento { ultimo_mes: Some(add_months(ultimo, 1)), ..orcamento });
+    }
+
+    let mut stored: HashMap<(String, String), Value> = HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare("SELECT kind, id, value FROM entities WHERE budget_id = ?1 AND kind IN (?2, ?3, ?4)")
+            .map_err(internal)?;
+        let rows = stmt
+            .query_map(params![budget_id, CALC_KINDS[0], CALC_KINDS[1], CALC_KINDS[2]], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+            })
+            .map_err(internal)?;
+        for row in rows {
+            let (kind, id, text) = row.map_err(internal)?;
+            stored.insert((kind, id), serde_json::from_str(&text).map_err(internal)?);
+        }
+    }
+
+    let mut changed: Vec<(&str, String, Value)> = Vec::new();
+    for (kind, value) in entidades_dos_calculos(&calculos) {
+        let id = value["id"].as_str().unwrap_or_default().to_owned();
+        if stored.remove(&(kind.to_owned(), id.clone())).as_ref() != Some(&value) {
+            changed.push((kind, id, value));
+        }
+    }
+    for ((kind, id), mut value) in stored {
+        if value.get("is_tombstone") != Some(&Value::Bool(true)) {
+            value["is_tombstone"] = Value::Bool(true);
+            let kind = CALC_KINDS.iter().find(|k| **k == kind).copied().unwrap_or(CALCULOS_DO_MES);
+            changed.push((kind, id, value));
+        }
+    }
+
+    let mut upsert = conn
+        .prepare(
+            "INSERT INTO entities (budget_id, kind, id, value, server_knowledge)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT (budget_id, kind, id)
+             DO UPDATE SET value = excluded.value, server_knowledge = excluded.server_knowledge",
+        )
+        .map_err(internal)?;
+    for (kind, id, value) in changed {
+        upsert.execute(params![budget_id, kind, id, value.to_string(), knowledge]).map_err(internal)?;
+    }
+    Ok(())
 }
 
 fn internal(error: impl Display) -> ServerError {
