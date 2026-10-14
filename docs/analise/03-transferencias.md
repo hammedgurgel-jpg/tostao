@@ -821,6 +821,190 @@ Teste `roteiro_9_primeira_tentativa`.
 - **9D, lançado de outro jeito**: a transferência de 300 para o Investimento ficou com a categoria **"Inflow: Ready to Assign"**. Corrente 730, Investimento 200, "Ready to Assign" **640** em outubro e em novembro. **Conferido**: saída com a categoria de receita desconta do "A atribuir" no mesmo mês (receita negativa). O roteiro 4E **não foi testado**.
 - **9E, lançado de outro jeito**: os 60 da Farmácia foram atribuídos em **novembro**. Em outubro, Farmácia −100 / −100 (amarelo, crédito), Pagamento do Cartão e do Cartão 2 0 / 0, "Ready to Assign" **580** (desconta os 60 atribuídos no futuro, "Assigned in Future Months" 60). Novembro: Farmácia 60, "Ready to Assign" 580. **Conferido**, mas sem dinheiro na Farmácia em outubro a divisão entre os cartões **não foi testada**.
 
+### Roteiro 10 — uma categoria que gasta em vários cartões
+
+**Para que serve.** No 9E, Farmácia com 60 atribuídos gastou 30 no Cartão e 70 no Cartão 2. A tela deu **10 e 50** nas categorias de pagamento; o motor dá 18 e 42 (`funded_spending_on_card` em `src/calc.rs`). Regras que explicam o 9E (as previsões saem de um teste temporário que implementou cada uma):
+- **P — proporção** (o motor hoje): a parte coberta se divide na proporção do gasto em cada cartão. Já descartada pelo 9E; fica nas tabelas como referência.
+- **C — estouro igual por cartão**: o estouro da categoria (gasto no crédito − dinheiro dela) se divide em partes iguais entre os cartões; o resto do gasto de cada cartão é coberto. No 9E: estouro 40, 20 em cada cartão (30 − 20 = 10; 70 − 20 = 50). Pode deixar um cartão com cobertura negativa.
+- **CL — estouro igual por cartão, limitado**: como o C, mas nenhum cartão fica com mais estouro do que gastou; a sobra se divide igualmente entre os outros.
+- **T — estouro igual por transação**: como o CL, mas por transação, não por cartão.
+
+Também caberiam "por ordem" (30 e 30) e "o último primeiro" (0 e 60), mas o 9E já descartou as duas. Nenhuma candidata usa o crédito de 10 que o Cartão consumiu em Mercado: pela regra do 9C, o gasto de Mercado e o crédito se anulam no pagamento do Cartão, e a Farmácia fica com 10 nele. O passo 10C confere isso com o Cartão de novo.
+
+Os passos **10A a 10C** separam as quatro regras:
+- **10A**: gastos bem diferentes (10 e 90). Separa P, C e CL/T.
+- **10B**: dois gastos num cartão e um no outro. Separa CL de T. O cartão do gasto maior vem primeiro, na ordem inversa do 9E.
+- **10C**: três cartões, um deles o Cartão (com o crédito consumido no 9C).
+
+Os passos **10D e 10E** conferem duas regras de cartão com saldo positivo trazido do mês anterior, que hoje são inferidas (`gasto_coberto_limitado` em `src/motor.rs`):
+- **10D, estorno no mês seguinte com o cartão positivo.** Regra do motor (**M**): o estorno fica na categoria e não sai do pagamento, como no 8E da segunda tentativa. Alternativa (**S**): sai do pagamento.
+- **10E, gastar o crédito do mês anterior num mês com pagamento** (o 9C com pagamento). Regra do motor (**F**, fim do mês): o crédito consumido se mede pelo saldo do fim do mês, depois do pagamento. Alternativa (**A**, antes do pagamento): o gasto consome o crédito primeiro, e o pagamento que deixa o cartão positivo de novo vai para o "A atribuir", como no 5C.
+
+Os valores que não dependem da regra saem do teste `roteiro_10_previsao`.
+
+#### Ponto de partida
+
+O TESTE como ficou no fim do roteiro 9 (segunda tentativa): Corrente 740, Investimento 200, Cartão −30, Cartão 2 −70; Farmácia com 60 em outubro, gastos de 30 no Cartão e de 70 no Cartão 2. **Antes de começar, mande uma captura** da tela "All Accounts" e do plano de outubro.
+
+Todas as datas de outubro são **14/10/2026 (hoje)**. Só o pagamento do 10D é em setembro. Data futura vira agendada.
+
+Toda atribuição é feita na tela **Plan**: escolha o mês no topo, clique na coluna **Assigned** da categoria e digite o valor. "Pagamento do Cartão X" é a linha **Cartão X** do grupo **Credit Card Payments** no plano.
+
+**Passo 0 — limpar e criar o Cartão 3.**
+
+| # | Onde | O que fazer |
+|---|---|---|
+| 1 | Cartão | Apagar o gasto de **30** em Farmácia (13/10). Não apague o de 10 em Mercado nem os de setembro |
+| 2 | Cartão 2 | Apagar o gasto de **70** em Farmácia (13/10) |
+| 3 | Barra da esquerda | **Add Account**, sem vincular ao banco, tipo **Credit Card**, nome **Cartão 3**, saldo **0**. Ela cria a categoria "Cartão 3" em "Credit Card Payments" |
+| 4 | Plan, Oct 2026 | Farmácia continua com **60** atribuídos; Mercado com 10 |
+
+Confira:
+
+| Onde | Esperado |
+|---|---|
+| Cartão / Cartão 2 / Cartão 3 | 0 / 0 / 0 |
+| Corrente / Investimento | 740 / 200 |
+| Oct 2026: Farmácia (Assigned / Activity / Available) | 60 / 0 / 60 |
+| Oct 2026: Pagamento do Cartão, do Cartão 2 e do Cartão 3 (Available) | 0 / 0 / 0 |
+| Ready to Assign: Sep / Oct / Nov | 890 / 880 / 680 |
+
+#### Como lançar um gasto no cartão (10A a 10E)
+
+| Campo | Valor |
+|---|---|
+| Abrir a conta | o **cartão do passo** (barra da esquerda, grupo CREDIT) → Add Transaction |
+| Date | **14/10/2026** |
+| Payee | qualquer nome, ex.: "Farmácia X" |
+| Category | **Farmácia** |
+| Outflow | o valor do passo (no estorno do 10D, **Inflow**) |
+| Dinheiro sai de → chega em | o cartão (vira dívida) → ninguém, é gasto |
+| Depois de salvar | o saldo do cartão cai o valor do passo. A Corrente **não muda** |
+
+Cada gasto é uma transação nova (não edite a anterior). Mande uma captura do plano de outubro depois de cada gasto: os valores do meio também ajudam a achar a regra.
+
+#### Passos
+
+Em cada passo, anote: saldo dos cartões; Activity e Available da Farmácia e dos pagamentos (e a cor); "Ready to Assign" de outubro e de novembro.
+
+**10A — 10 num cartão e 90 no outro.**
+
+| # | Cartão | Outflow | Depois de salvar |
+|---|---|---|---|
+| A1 | **Cartão 2** | **10** | Cartão 2 −10; Farmácia 50; Pagamento do Cartão 2: **10** |
+| A2 | **Cartão 3** | **90** | Cartão 3 −90; Farmácia **−40** (amarelo) |
+
+Depois do A2 (Farmácia gastou 100 e tinha 60: estouro de 40 no crédito):
+
+| Onde | P | C | CL | T |
+|---|---|---|---|---|
+| Oct: Pagamento do Cartão 2 (Available) | 6 | **−10** | **0** | **0** |
+| Oct: Pagamento do Cartão 3 (Available) | 54 | **70** | **60** | **60** |
+
+Iguais em todas: Farmácia 60 / −100 / −40 (amarelo); Ready to Assign Oct / Nov 880 / 680; em novembro, os pagamentos com os mesmos valores de outubro. Se der outra divisão, anote o Activity dos dois pagamentos.
+
+**10B — dois gastos num cartão, um no outro.** Primeiro apague os dois gastos do 10A (Cartão 2 e Cartão 3 voltam a 0; Farmácia 60).
+
+| # | Cartão | Outflow | Depois de salvar |
+|---|---|---|---|
+| B1 | **Cartão 3** | **60** | Cartão 3 −60; Farmácia 0; Pagamento do Cartão 3: **60** |
+| B2 | **Cartão 2** | **15** | Cartão 2 −15; Farmácia −15 (amarelo) |
+| B3 | **Cartão 2** | **15** (outra transação) | Cartão 2 −30; Farmácia −30 (amarelo) |
+
+Depois do B2 (estouro 15):
+
+| Onde | P | C | CL | T |
+|---|---|---|---|---|
+| Oct: Pagamento do Cartão 2 | 12 | 7,50 | 7,50 | 7,50 |
+| Oct: Pagamento do Cartão 3 | 48 | 52,50 | 52,50 | 52,50 |
+
+Depois do B3 (estouro 30):
+
+| Onde | P | C | CL | T |
+|---|---|---|---|---|
+| Oct: Pagamento do Cartão 2 | 20 | **15** | **15** | **10** |
+| Oct: Pagamento do Cartão 3 | 40 | **45** | **45** | **50** |
+
+Iguais em todas: Farmácia 60 / −90 / −30 (amarelo); Ready to Assign Oct / Nov 880 / 680.
+
+**10C — três cartões.** Primeiro apague os três gastos do 10B (Cartão 2 e Cartão 3 voltam a 0; Farmácia 60).
+
+| # | Cartão | Outflow | Depois de salvar |
+|---|---|---|---|
+| C1 | **Cartão 2** | **10** | Cartão 2 −10; Pagamento do Cartão 2: 10 |
+| C2 | **Cartão 3** | **50** | Cartão 3 −50; Farmácia 0; Pagamento do Cartão 3: 50 |
+| C3 | **Cartão** (o primeiro) | **60** | **Cartão −60** (o gasto de 10 em Mercado já levou o crédito de setembro); Farmácia −60 (amarelo) |
+
+Depois do C3 (estouro 60):
+
+| Onde | P | C | CL | T |
+|---|---|---|---|---|
+| Oct: Pagamento do Cartão | 30 | **40** | **35** | **35** |
+| Oct: Pagamento do Cartão 2 | 5 | **−10** | **0** | **0** |
+| Oct: Pagamento do Cartão 3 | 25 | **30** | **25** | **25** |
+
+Iguais em todas: Farmácia 60 / −120 / −60 (amarelo); Ready to Assign Oct / Nov 880 / 680. No CL e no T, o Cartão 2 só aguenta 10 do estouro; os 10 que sobram dos 20 dele se dividem entre os outros dois (25 de estouro em cada).
+
+**10D — estorno no mês seguinte com o cartão positivo.** Primeiro apague os três gastos do 10C (os três cartões voltam a 0; Farmácia 60).
+
+**Lançamento D0 — pagamento do Cartão 3 em setembro, sem dívida**
+
+| Campo | Valor |
+|---|---|
+| Abrir a conta | **Conta Corrente** (grupo CASH) → Add Transaction |
+| Date | **20/09/2026** (setembro) |
+| Payee | **deixar vazio** |
+| Category | no grupo **Credit Card Payments**, a categoria **Cartão 3**. O Payee vira sozinho **"Payment: Cartão 3"** e a categoria "Category not needed" |
+| Outflow | **20** |
+| Sai de → chega em | Conta Corrente → Cartão 3 |
+| Depois de salvar | Corrente **720** e **Cartão 3 +20**. Se a categoria ficar "Farmácia" ou a linha mostrar "This needs a category", está errado: apague e lance de novo |
+
+Confira:
+
+| Onde | Esperado | Se der… |
+|---|---|---|
+| Sep 2026: Pagamento do Cartão 3 (Activity / Available) | −20 / −20 (vermelho) | |
+| Ready to Assign: Sep / Oct / Nov | **910** / 880 / 680 | Sep 890 → o pagamento sem dívida não soma (contradiz o 5C) |
+| Oct 2026: Pagamento do Cartão 3 | 0 / 0 | −20 → o vermelho passa para o mês seguinte |
+
+**Lançamento D1 — estorno no Cartão 3 em outubro**: ficha do gasto, no **Cartão 3**, com **Inflow 10** (entrada, não saída). Depois de salvar: **Cartão 3 +30**; Farmácia 60 / +10 / 70.
+
+| Onde | M | S |
+|---|---|---|
+| Oct: Pagamento do Cartão 3 (Activity / Available) | **0 / 0** | −10 / −10 (vermelho) |
+| Ready to Assign: Oct / Nov | 880 / **680** | 880 / 670 |
+
+**10E — gastar o crédito de setembro num mês com pagamento.** Primeiro apague o estorno do D1 (Cartão 3 volta a +20; Farmácia 60). O pagamento de setembro (D0) fica.
+
+**Lançamento E1 — gasto no Cartão 3**: ficha do gasto, no **Cartão 3**, **Outflow 30**. Depois de salvar: **Cartão 3 −10**; Farmácia 60 / −30 / 30.
+
+| Onde | Esperado (F e A) | Se der… |
+|---|---|---|
+| Oct: Pagamento do Cartão 3 (Activity / Available) | **10 / 10** | 30 / 30 → o crédito de setembro não é descontado quando o gasto passa dele; 0 / 0 → o gasto inteiro fica fora do pagamento |
+
+Os 20 de crédito pagam parte do gasto; só os 10 que viram dívida passam para o pagamento.
+
+**Lançamento E2 — pagamento do Cartão 3 em outubro**
+
+| Campo | Valor |
+|---|---|
+| Abrir a conta | **Conta Corrente** → Add Transaction |
+| Date | **14/10/2026** |
+| Payee | **deixar vazio** |
+| Category | **Credit Card Payments: Cartão 3** (o Payee vira "Payment: Cartão 3") |
+| Outflow | **30** |
+| Sai de → chega em | Conta Corrente → Cartão 3 |
+| Depois de salvar | Corrente **690** e **Cartão 3 +20** (era −10) |
+
+| Onde | F | A |
+|---|---|---|
+| Oct: Pagamento do Cartão 3 (Activity / Available) | **0 / 0** | −20 / −20 (vermelho) |
+| Ready to Assign: Oct / Nov | **880** / 680 | 900 / 680 |
+
+No F, o cartão termina outubro com o mesmo +20 com que começou: nada do crédito foi gasto, os 30 da Farmácia passam inteiros para o pagamento e o pagamento de 30 os leva. No A, o gasto consome os 20 e o pagamento recria um positivo de 20, que vai para o "A atribuir" de outubro e desconta de novembro.
+
+Mande uma captura do plano (Sep, Oct e Nov) e da tela "All Accounts" no fim de cada passo.
+
 ## 10. Implicações para o Tostão
 
 - **Modelo**: manter o do YNAB (duas transações com id cruzado; parte de divisão ↔ transação inteira; agendada com uma ponta só). Ele já passa pelo protocolo sem mudança e o `src/server.rs` guarda tudo sem conhecer transferências.

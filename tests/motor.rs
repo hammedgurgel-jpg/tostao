@@ -1001,3 +1001,110 @@ fn roteiro_9e_divisao_entre_dois_cartoes() {
     assert_eq!((c.disponivel(OUT, "pagamento-cartao"), c.disponivel(OUT, "pagamento-cartao2")), (10_000, 50_000));
     assert_eq!((c.disponivel(NOV, "pagamento-cartao"), c.disponivel(NOV, "pagamento-cartao2")), (10_000, 50_000));
 }
+
+/// Ponto de partida do roteiro 10: o fim do roteiro 9 sem os dois gastos
+/// da Farmácia, e com o Cartão 3.
+fn roteiro_10_partida() -> Roteiro {
+    const SET: u32 = 9;
+    let mut r = Roteiro::novo();
+    r.transacao("t1").data = dia(SET, 1);
+    r.cartao("cartao");
+    r.cartao("cartao2");
+    r.conta("investimento", TipoConta::Dinheiro, false);
+    r.orc.atribuicoes.push(Atribuicao { categoria: "mercado".into(), mes: dia(SET, 1), valor: 50_000 });
+    let volta = r.transfere("investimento", "corrente", 100_000, None);
+    data_das_pontas(&mut r, volta, dia(SET, 1));
+    let gasto = r.lanca("cartao", -50_000, Some("mercado"));
+    r.transacao(&gasto).data = dia(SET, 15);
+    let pagamento = r.transfere("corrente", "cartao", 60_000, None);
+    data_das_pontas(&mut r, pagamento, dia(SET, 20));
+    r.atribui("mercado", 10_000);
+    r.lanca("cartao", -10_000, Some("mercado"));
+    r.transfere("corrente", "investimento", 300_000, None);
+    r.atribui("farmacia", 60_000);
+    r.cartao("cartao3");
+    r
+}
+
+#[test]
+fn roteiro_10_previsao() {
+    // Previsão do roteiro 10 (análise 03). A divisão entre os cartões
+    // depende da regra (tabelas do roteiro); aqui só o que não depende dela.
+    const SET: u32 = 9;
+    let pagamentos = |c: &Calculos| -> i64 {
+        ["pagamento-cartao", "pagamento-cartao2", "pagamento-cartao3"].iter().map(|p| c.disponivel(OUT, p)).sum()
+    };
+    let mut r = roteiro_10_partida();
+    let c = r.calcula();
+    assert_eq!((c.conta("cartao"), c.conta("cartao2"), c.conta("cartao3")), (0, 0, 0));
+    assert_eq!((c.disponivel(OUT, "farmacia"), pagamentos(&c)), (60_000, 0));
+    assert_eq!((c.a_atribuir(SET), c.a_atribuir(OUT), c.a_atribuir(NOV)), (890_000, 880_000, 680_000));
+
+    // 10A: 10 no Cartão 2 e 90 no Cartão 3.
+    let a1 = r.lanca("cartao2", -10_000, Some("farmacia"));
+    assert_eq!(r.calcula().disponivel(OUT, "pagamento-cartao2"), 10_000);
+    let a2 = r.lanca("cartao3", -90_000, Some("farmacia"));
+    let c = r.calcula();
+    assert_eq!((c.atividade(OUT, "farmacia"), c.disponivel(OUT, "farmacia")), (-100_000, -40_000));
+    assert_eq!(c.cat(OUT, "farmacia").credit_overspent(), -40_000, "amarelo");
+    assert_eq!((pagamentos(&c), c.a_atribuir(OUT), c.a_atribuir(NOV)), (60_000, 880_000, 680_000));
+
+    // 10B: 60 no Cartão 3, depois 15 e 15 no Cartão 2.
+    r.remove(&a1);
+    r.remove(&a2);
+    let b1 = r.lanca("cartao3", -60_000, Some("farmacia"));
+    let c = r.calcula();
+    assert_eq!((c.disponivel(OUT, "farmacia"), c.disponivel(OUT, "pagamento-cartao3")), (0, 60_000));
+    let b2 = r.lanca("cartao2", -15_000, Some("farmacia"));
+    let c = r.calcula();
+    assert_eq!((c.disponivel(OUT, "farmacia"), pagamentos(&c)), (-15_000, 60_000));
+    let b3 = r.lanca("cartao2", -15_000, Some("farmacia"));
+    let c = r.calcula();
+    assert_eq!((c.conta("cartao2"), c.disponivel(OUT, "farmacia"), pagamentos(&c)), (-30_000, -30_000, 60_000));
+
+    // 10C: 10 no Cartão 2, 50 no Cartão 3 e 60 no Cartão (que consumiu o
+    // crédito de setembro em Mercado, 9C).
+    for t in [b1, b2, b3] {
+        r.remove(&t);
+    }
+    let c1 = r.lanca("cartao2", -10_000, Some("farmacia"));
+    let c2 = r.lanca("cartao3", -50_000, Some("farmacia"));
+    let c = r.calcula();
+    assert_eq!((c.disponivel(OUT, "pagamento-cartao2"), c.disponivel(OUT, "pagamento-cartao3")), (10_000, 50_000));
+    let c3 = r.lanca("cartao", -60_000, Some("farmacia"));
+    let c = r.calcula();
+    assert_eq!((c.conta("cartao"), c.disponivel(OUT, "farmacia"), pagamentos(&c)), (-60_000, -60_000, 60_000));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (880_000, 680_000));
+
+    // 10D: pagamento de 20 ao Cartão 3 em setembro, sem dívida (+20 no A
+    // atribuir de setembro); depois estorno de 10 na Farmácia em outubro.
+    for t in [c1, c2, c3] {
+        r.remove(&t);
+    }
+    let p = r.transfere("corrente", "cartao3", 20_000, None);
+    data_das_pontas(&mut r, p, dia(SET, 20));
+    let c = r.calcula();
+    assert_eq!((c.conta("corrente"), c.conta("cartao3")), (720_000, 20_000));
+    assert_eq!((c.atividade(SET, "pagamento-cartao3"), c.disponivel(SET, "pagamento-cartao3")), (-20_000, -20_000));
+    assert_eq!(c.disponivel(OUT, "pagamento-cartao3"), 0);
+    assert_eq!((c.a_atribuir(SET), c.a_atribuir(OUT), c.a_atribuir(NOV)), (910_000, 880_000, 680_000));
+    let d1 = r.lanca("cartao3", 10_000, Some("farmacia"));
+    let c = r.calcula();
+    assert_eq!(c.conta("cartao3"), 30_000);
+    assert_eq!((c.atividade(OUT, "farmacia"), c.disponivel(OUT, "farmacia")), (10_000, 70_000));
+    assert_eq!((c.atividade(OUT, "pagamento-cartao3"), c.disponivel(OUT, "pagamento-cartao3")), (0, 0));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (880_000, 680_000));
+
+    // 10E: gasto de 30 no Cartão 3 (consome os 20 de crédito; 10 viram
+    // dívida), depois pagamento de 30 no mesmo mês.
+    r.remove(&d1);
+    r.lanca("cartao3", -30_000, Some("farmacia"));
+    let c = r.calcula();
+    assert_eq!((c.conta("cartao3"), c.disponivel(OUT, "farmacia")), (-10_000, 30_000));
+    assert_eq!((c.atividade(OUT, "pagamento-cartao3"), c.disponivel(OUT, "pagamento-cartao3")), (10_000, 10_000));
+    r.transfere("corrente", "cartao3", 30_000, None);
+    let c = r.calcula();
+    assert_eq!((c.conta("corrente"), c.conta("cartao3")), (690_000, 20_000));
+    assert_eq!((c.atividade(OUT, "pagamento-cartao3"), c.disponivel(OUT, "pagamento-cartao3")), (0, 0));
+    assert_eq!((c.a_atribuir(OUT), c.a_atribuir(NOV)), (880_000, 680_000));
+}
