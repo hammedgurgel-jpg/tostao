@@ -172,31 +172,28 @@ pub fn month_over_spent<'a>(
     categories.into_iter().map(SubCategoryMonthCalc::cash_overspent).sum::<i64>() + uncategorized.cash_overspent()
 }
 
-/// Gasto de uma categoria num mês, visto de um cartão de crédito.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct CardSpending {
-    /// Saídas no crédito da categoria no mês, em todos os cartões (≤ 0).
-    pub category_credit_outflows: i64,
-    /// A parte delas coberta pelo dinheiro da categoria (≤ 0).
-    pub category_budgeted_credit_outflows: i64,
-    /// Saídas da categoria neste cartão no mês (≤ 0).
-    pub on_this_card: i64,
-}
-
-/// Quanto do gasto neste cartão estava coberto pelas categorias (≤ 0): o
-/// valor de `budgeted_spending` da categoria de pagamento do cartão.
+/// Divide o gasto coberto de uma categoria no crédito
+/// (`budgeted_credit_outflows`, ≤ 0) entre os cartões em que ela gastou no
+/// mês (`on_cards`, o gasto em cada um). Devolve a parte coberta em cada
+/// cartão, na mesma ordem.
 ///
-/// Regra nossa: quando uma categoria usa vários cartões no mês, a parte
-/// coberta é dividida entre eles na proporção do gasto em cada um.
-pub fn funded_spending_on_card(parts: &[CardSpending]) -> i64 {
-    parts
-        .iter()
-        .filter(|p| p.category_credit_outflows != 0)
-        .map(|p| {
-            let share = p.category_budgeted_credit_outflows as i128 * p.on_this_card as i128;
-            (share as f64 / p.category_credit_outflows as f64).round() as i64
-        })
-        .sum()
+/// Não está no bundle (é soma do servidor). **Conferido na tela** (análise
+/// 03, roteiros 9E e 10): o cartão com o maior gasto é coberto primeiro, e o
+/// estouro fica nos menores. Ex.: 60 cobertos de 10 + 90 ficam 0 e 60. Em
+/// caso de empate, vale a ordem de `on_cards` (não visto). Um estorno
+/// coberto (> 0) vai do maior estorno para o menor, pela mesma regra.
+pub fn funded_by_card(budgeted_credit_outflows: i64, on_cards: &[i64]) -> Vec<i64> {
+    let mut funded = vec![0; on_cards.len()];
+    let sign = if budgeted_credit_outflows < 0 { -1 } else { 1 };
+    let mut order: Vec<usize> = (0..on_cards.len()).filter(|&i| on_cards[i] * sign > 0).collect();
+    order.sort_by_key(|&i| -(on_cards[i] * sign));
+    let mut rest = budgeted_credit_outflows * sign;
+    for i in order {
+        let part = rest.min(on_cards[i] * sign);
+        funded[i] = part * sign;
+        rest -= part;
+    }
+    funded
 }
 
 /// Saldo da categoria de pagamento do cartão: saldo positivo do mês

@@ -117,22 +117,19 @@ fn month_overspending_matches_ynab_screen_roteiro_1() {
     assert_eq!(nov.available_to_budget, 880_000, "A atribuir de novembro na tela");
 }
 
-fn card_spending(budgeted: i64, on_card: i64) -> (SubCategoryMonthCalc, CardSpending) {
+/// Categoria que gastou `on_card` num cartão só; devolve também a parte coberta.
+fn card_spending(budgeted: i64, on_card: i64) -> (SubCategoryMonthCalc, i64) {
     let mut c = SubCategoryMonthCalc { budgeted, credit_outflows: Some(on_card), ..Default::default() };
     calculate_balance(&mut c, None, id);
     calculate_budgeted_cash_credit_outflows(&mut c);
-    let part = CardSpending {
-        category_credit_outflows: on_card,
-        category_budgeted_credit_outflows: c.budgeted_credit_outflows,
-        on_this_card: on_card,
-    };
-    (c, part)
+    let funded = funded_by_card(c.budgeted_credit_outflows, &[on_card])[0];
+    (c, funded)
 }
 
-fn payment_balance(parts: &[CardSpending], payments: i64, previous: Option<&SubCategoryMonthCalc>) -> SubCategoryMonthCalc {
+fn payment_balance(parts: &[i64], payments: i64, previous: Option<&SubCategoryMonthCalc>) -> SubCategoryMonthCalc {
     let mut p = SubCategoryMonthCalc {
         cash_outflows: Some(payments),
-        budgeted_spending: funded_spending_on_card(parts),
+        budgeted_spending: parts.iter().sum(),
         ..Default::default()
     };
     calculate_credit_card_payment_balance(&mut p, previous, id);
@@ -196,15 +193,12 @@ fn overspending_is_split_between_cash_and_credit() {
 
 #[test]
 fn credit_card_payment_collects_funded_spending_and_pays_out() {
-    let parts = [
-        // categoria usou dois cartões: 10 no total, 6 cobertos, 4 neste cartão
-        CardSpending { category_credit_outflows: -10_000, category_budgeted_credit_outflows: -6_000, on_this_card: -4_000 },
-        // categoria toda neste cartão e toda coberta
-        CardSpending { category_credit_outflows: -3_000, category_budgeted_credit_outflows: -3_000, on_this_card: -3_000 },
-        CardSpending::default(),
-    ];
-    let funded = funded_spending_on_card(&parts);
-    assert_eq!(funded, -5_400);
+    // Categoria que usou dois cartões: 4 neste e 6 no outro, 6 cobertos. O
+    // maior gasto é coberto primeiro: nada neste cartão.
+    assert_eq!(funded_by_card(-6_000, &[-4_000, -6_000]), vec![0, -6_000]);
+    assert_eq!(funded_by_card(-8_000, &[-4_000, -6_000]), vec![-2_000, -6_000]);
+    // Outra categoria, toda neste cartão e toda coberta.
+    let funded = -3_000;
 
     let prev = SubCategoryMonthCalc { balance: Some(1_000), ..Default::default() };
     let mut payment = SubCategoryMonthCalc {
@@ -214,6 +208,6 @@ fn credit_card_payment_collects_funded_spending_and_pays_out() {
         ..Default::default()
     };
     calculate_credit_card_payment_balance(&mut payment, Some(&prev), id);
-    assert_eq!(payment.balance, Some(4_400));
+    assert_eq!(payment.balance, Some(2_000));
     assert_eq!(CategoryType::from_code("DBT"), Some(CategoryType::CreditCardPayment));
 }

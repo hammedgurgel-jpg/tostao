@@ -17,8 +17,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::calc::{
     calculate_available_to_budget, calculate_balance, calculate_budgeted_cash_credit_outflows,
-    calculate_credit_card_payment_balance, calculate_left_to_budget_for_monthly_budget, funded_spending_on_card, js_round,
-    month_over_spent, round_to_currency, uncategorized_row, CardSpending, CategoryType, MonthCalc, MonthlyBudget,
+    calculate_credit_card_payment_balance, calculate_left_to_budget_for_monthly_budget, funded_by_card, js_round,
+    month_over_spent, round_to_currency, uncategorized_row, CategoryType, MonthCalc, MonthlyBudget,
     SubCategoryMonthCalc,
 };
 use crate::dates::{add_months, start_of_month, Date};
@@ -293,6 +293,9 @@ struct Cartao {
     pagamentos: i64,
     /// Lançamentos que não são transferência entre orçamentárias nem pagamento.
     gastos: i64,
+    /// Quanto dos gastos foi pago com o saldo positivo que o cartão trouxe do
+    /// mês anterior (≥ 0). Ver [`credito_consumido`].
+    consumido: i64,
 }
 
 /// Somas do mês.
@@ -307,37 +310,47 @@ struct Mes {
 pub fn calcular(orcamento: &Orcamento) -> Calculos {
     let round = |v: i64| round_to_currency(v, orcamento.casas_decimais, js_round);
     let lancamentos = classificar(orcamento);
+    let saldos = SaldosPorMes::new(orcamento);
+    let consumido = credito_consumido(&lancamentos, &saldos);
 
     // Etapa 2: somas por categoria, cartão e mês.
     let mut saidas: HashMap<(&str, Date), Saidas> = HashMap::new();
     let mut cartoes: HashMap<(&str, Date), Cartao> = HashMap::new();
     let mut somas: BTreeMap<Date, Mes> = BTreeMap::new();
     let mut meses: BTreeSet<Date> = BTreeSet::new();
-    for l in &lancamentos {
+    for (i, l) in lancamentos.iter().enumerate() {
         let mes = start_of_month(l.data);
         if l.classe != Classe::Ignorada {
             meses.insert(mes);
         }
+        // A parte paga com o crédito trazido do mês anterior conta como dinheiro.
+        let em_dinheiro = -consumido.get(&i).copied().unwrap_or(0);
         let m = somas.entry(mes).or_default();
         match &l.classe {
             Classe::Comum { categoria, cartao } => {
                 let s = saidas.entry((categoria.as_str(), mes)).or_default();
                 match cartao {
                     Some(cartao) => {
-                        s.credito += l.valor;
-                        *s.por_cartao.entry(cartao.clone()).or_default() += l.valor;
+                        s.credito += l.valor - em_dinheiro;
+                        s.dinheiro += em_dinheiro;
+                        *s.por_cartao.entry(cartao.clone()).or_default() += l.valor - em_dinheiro;
                     }
                     None => s.dinheiro += l.valor,
                 }
             }
-            Classe::SemCategoria { credito: true } => m.sem_categoria_credito += l.valor,
+            Classe::SemCategoria { credito: true } => {
+                m.sem_categoria_credito += l.valor - em_dinheiro;
+                m.sem_categoria_dinheiro += em_dinheiro;
+            }
             Classe::SemCategoria { credito: false } => m.sem_categoria_dinheiro += l.valor,
             Classe::Receita => m.receita += l.valor,
             Classe::PagamentoCartao { cartao } => cartoes.entry((cartao.as_str(), mes)).or_default().pagamentos += l.valor,
             Classe::TransferenciaEntreOrcamentarias | Classe::Ignorada => {}
         }
         if matches!(l.classe, Classe::Comum { .. } | Classe::SemCategoria { .. } | Classe::Receita) {
-            cartoes.entry((l.conta.as_str(), mes)).or_default().gastos += l.valor;
+            let c = cartoes.entry((l.conta.as_str(), mes)).or_default();
+            c.gastos += l.valor;
+            c.consumido -= em_dinheiro;
         }
     }
 
@@ -353,7 +366,6 @@ pub fn calcular(orcamento: &Orcamento) -> Calculos {
     }
     meses.extend(orcamento.ultimo_mes.map(start_of_month));
 
-    let saldos = SaldosPorMes::new(orcamento);
     let contas = saldos_finais(orcamento);
     let (Some(&primeiro), Some(&ultimo)) = (meses.first(), meses.last()) else {
         return Calculos { meses: Vec::new(), contas };
@@ -396,20 +408,20 @@ pub fn calcular(orcamento: &Orcamento) -> Calculos {
             calculadas.push(CalculoCategoria { categoria: c.id.clone(), calculo: calc });
         }
 
+        // Gasto coberto de cada categoria, dividido entre os cartões.
+        let mut coberto_no_cartao: HashMap<&str, i64> = HashMap::new();
+        for (n, calc) in normais.iter().zip(&calculadas) {
+            let Some(s) = saidas.get(&(n.id.as_str(), mes)) else { continue };
+            let gastos: Vec<i64> = s.por_cartao.values().copied().collect();
+            let cobertos = funded_by_card(calc.calculo.budgeted_credit_outflows, &gastos);
+            for (cartao, coberto) in s.por_cartao.keys().zip(cobertos) {
+                *coberto_no_cartao.entry(cartao.as_str()).or_default() += coberto;
+            }
+        }
+
         let mut adicional = 0;
         for (c, cartao) in &de_pagamento {
-            let partes: Vec<CardSpending> = normais
-                .iter()
-                .zip(&calculadas)
-                .filter_map(|(n, calc)| {
-                    let no_cartao = saidas.get(&(n.id.as_str(), mes))?.por_cartao.get(*cartao).copied()?;
-                    Some(CardSpending {
-                        category_credit_outflows: calc.calculo.credit_outflows.unwrap_or(0),
-                        category_budgeted_credit_outflows: calc.calculo.budgeted_credit_outflows,
-                        on_this_card: no_cartao,
-                    })
-                })
-                .collect();
+            let coberto = coberto_no_cartao.get(cartao).copied().unwrap_or(0);
             let movimento = cartoes.get(&(*cartao, mes)).copied().unwrap_or_default();
             // Lançado direto na categoria de pagamento (sem ser transferência):
             // conta como saída dela.
@@ -420,7 +432,7 @@ pub fn calcular(orcamento: &Orcamento) -> Calculos {
                 month: mes,
                 budgeted: atribuido.get(&(c.id.as_str(), mes)).copied().unwrap_or(0),
                 cash_outflows: Some(direto - movimento.pagamentos),
-                budgeted_spending: gasto_coberto_limitado(funded_spending_on_card(&partes), saldo_anterior, movimento, excesso),
+                budgeted_spending: gasto_coberto_limitado(coberto, saldo_anterior, movimento, excesso),
                 ..Default::default()
             };
             let previa = anterior_da(&c.id);
@@ -485,36 +497,69 @@ fn pagamento_alem_da_divida(saldo_anterior: i64, mes: Cartao) -> i64 {
     saldo_positivo_novo(saldo_anterior, mes).min(mes.pagamentos.max(0))
 }
 
-/// Quanto o cartão ficou positivo no mês além do saldo positivo que já tinha.
+/// Quanto o cartão ficou positivo no mês além do saldo positivo que já tinha
+/// e que não foi gasto. O crédito trazido que os gastos consumiram
+/// ([`credito_consumido`]) e que um pagamento recria é positivo novo:
+/// conferido no 10E da análise 03 (cartão com +20 de setembro, gasto de 30 e
+/// pagamento de 30 em outubro: +20 no "A atribuir" de outubro).
 fn saldo_positivo_novo(saldo_anterior: i64, mes: Cartao) -> i64 {
     let depois = saldo_anterior + mes.pagamentos + mes.gastos;
-    (depois.max(0) - saldo_anterior.max(0)).max(0)
+    (depois.max(0) - (saldo_anterior.max(0) - mes.consumido)).max(0)
 }
 
-/// Gasto coberto que passa para a categoria de pagamento (`budgeted_spending`),
-/// com dois limites vistos na tela (roteiros 8 e 9 da análise 03):
+/// Gasto coberto que passa para a categoria de pagamento (`budgeted_spending`).
 ///
-/// - **gasto** (`coberto < 0`): a parte que só consome o saldo positivo que o
-///   cartão trouxe do mês anterior não passa para o pagamento, porque não
-///   vira dívida. Conferido no 9C: cartão com +10 vindo de setembro, gasto
-///   coberto de 10 em outubro, pagamento ficou 0 / 0. Com pagamentos no
-///   mesmo mês, o crédito consumido é medido pelo saldo do fim do mês
-///   (inferido);
-/// - **estorno** (`coberto > 0`): só sai da categoria de pagamento na parte
-///   que reduz a dívida do cartão ou que vai para o "A atribuir"
-///   ([`pagamento_alem_da_divida`]). A parte que só deixa o cartão positivo
-///   fica na categoria do estorno. Conferido no roteiro 8: estorno de 20 com
-///   dívida de 50 tirou 20 do pagamento; com cartão em 0 e sem pagamento no
-///   mês, não tirou nada; depois de pagar além da dívida, tirou 20 e o
-///   "A atribuir" subiu 20.
+/// O gasto pago com o crédito trazido do mês anterior já chega aqui fora do
+/// coberto, porque conta como dinheiro ([`credito_consumido`]). O estorno
+/// (`coberto > 0`) só sai da categoria de pagamento na parte que reduz a
+/// dívida do cartão ou que vai para o "A atribuir"
+/// ([`pagamento_alem_da_divida`]); a parte que só deixa o cartão positivo
+/// fica na categoria do estorno. Conferido no roteiro 8 (estorno de 20 com
+/// dívida de 50 tirou 20 do pagamento; com cartão em 0 e sem pagamento no
+/// mês, não tirou nada; depois de pagar além da dívida, tirou 20 e o
+/// "A atribuir" subiu 20) e no 10D (cartão com +20 de setembro, estorno de
+/// 10 em outubro: não tirou nada).
 fn gasto_coberto_limitado(coberto: i64, saldo_anterior: i64, mes: Cartao, excesso: i64) -> i64 {
-    if coberto < 0 {
-        let depois = saldo_anterior + mes.pagamentos + mes.gastos;
-        let credito_gasto = (saldo_anterior.max(0) - depois.max(0)).max(0);
-        return coberto + credito_gasto.min(-coberto);
+    if coberto <= 0 {
+        return coberto;
     }
     let so_positivo = saldo_positivo_novo(saldo_anterior, mes) - excesso;
     (coberto - so_positivo).max(0)
+}
+
+/// Quanto de cada saída no cartão (pelo índice em `lancamentos`, ≥ 0) foi
+/// pago com o saldo positivo que o cartão trouxe do fim do mês anterior.
+/// Essa parte não vira dívida: conta como gasto em dinheiro da categoria
+/// (ou da linha "sem categoria"), e os pagamentos do mês não a mudam.
+///
+/// Conferido na análise 03: no 9C (gasto coberto de 10 com +10 de setembro,
+/// pagamento 0 / 0); no 9E (o crédito de 10 foi para o gasto de 30 na
+/// Farmácia, não para o de 10 em Mercado, do mesmo dia); no 10E (saída sem
+/// categoria de 30 com +20 de setembro: 20 estouram em dinheiro e descontam
+/// do mês seguinte). As saídas são consumidas por data e, no mesmo dia, da
+/// maior para a menor (inferido do 9E).
+fn credito_consumido(lancamentos: &[Lancamento], saldos: &SaldosPorMes) -> HashMap<usize, i64> {
+    let mut saidas: BTreeMap<(&str, Date), Vec<usize>> = BTreeMap::new();
+    for (i, l) in lancamentos.iter().enumerate() {
+        let no_credito = matches!(&l.classe, Classe::Comum { cartao: Some(_), .. } | Classe::SemCategoria { credito: true });
+        if no_credito && l.valor < 0 {
+            saidas.entry((l.conta.as_str(), start_of_month(l.data))).or_default().push(i);
+        }
+    }
+    let mut consumido = HashMap::new();
+    for ((cartao, mes), mut indices) in saidas {
+        let mut credito = saldos.no_fim_de(cartao, add_months(mes, -1));
+        indices.sort_by_key(|&i| (lancamentos[i].data, lancamentos[i].valor));
+        for i in indices {
+            if credito <= 0 {
+                break;
+            }
+            let parte = credito.min(-lancamentos[i].valor);
+            consumido.insert(i, parte);
+            credito -= parte;
+        }
+    }
+    consumido
 }
 
 /// Transações que entram no saldo da conta: nem removidas nem cruas.

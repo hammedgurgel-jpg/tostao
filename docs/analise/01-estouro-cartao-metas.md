@@ -260,7 +260,8 @@ Já implementado no Tostão, com testes em `tests/goals.rs` e `tests/calc.rs`:
 - **Estouro** por categoria e do mês (seção 2), em `src/calc.rs`.
   - O estouro do mês soma o estouro em dinheiro das categorias e da linha "sem categoria" (conferido na tela).
 - **Saldo da categoria de pagamento do cartão** (seção 3), em `src/calc.rs`.
-  - Quando uma categoria usa vários cartões, a parte coberta é dividida entre eles na proporção do gasto. Essa regra é nossa.
+  - Quando uma categoria usa vários cartões, o cartão com o **maior gasto** da categoria é coberto primeiro, e o estouro fica nos menores (`funded_by_card`). **Conferido na tela** (análise 03, roteiros 9E e 10).
+  - O gasto pago com o saldo positivo que o cartão trouxe do mês anterior conta como gasto **em dinheiro** da categoria: não passa para o pagamento e, sem dinheiro na categoria, estoura em dinheiro (`credito_consumido` em `src/motor.rs`; análise 03, roteiros 9C, 9E e 10E).
 - **Arredondamento** (seção 4): `js_round` (Math.round) e `round_to_currency`, em `src/calc.rs`.
 - **Datas** com as regras do moment.js, em `src/dates.rs`.
 - Diferença conhecida: na meta semanal com frequência > 1, o YNAB pode chegar a frações de milésimo; o Tostão arredonda.
@@ -273,7 +274,7 @@ Estado dos três pontos em aberto (2026-10-13):
 
 Resolvidos na análise 02: a geração das datas das agendadas (§2), como a movimentação altera o atribuído (§1) e a reconciliação de contas (§3).
 
-Os três pontos estão fechados. O motor que monta essas somas a partir das transações está em `src/motor.rs`; os roteiros 1 e 2 estão refeitos a partir de transações em `tests/motor.rs`. Ainda não testamos na tela uma categoria que gasta em **dois cartões** no mesmo mês. A divisão proporcional da parte coberta entre eles é regra nossa e **não bateu com a tela** (análise 03, roteiro 9E: 60 cobertos de 30 + 70 viraram 10 e 50, não 18 e 42). A regra do YNAB ainda não foi achada. A biblioteca Kotlin (offsets ~1,30M–1,45M) foi lida em parte: tem `Calculations` com os campos do cartão (1312078–1312411), mas a lógica da soma do mês não aparece nela.
+Os três pontos estão fechados. O motor que monta essas somas a partir das transações está em `src/motor.rs`; os roteiros 1 e 2 estão refeitos a partir de transações em `tests/motor.rs`. A categoria que gasta em **vários cartões** no mesmo mês foi conferida na tela (análise 03, roteiros 9E e 10). A divisão proporcional que usávamos não bateu (no 9E, 60 cobertos de 30 + 70 viraram 10 e 50, não 18 e 42), nem o estouro igual entre os cartões ou as transações (roteiro 10). A regra que fecha os quatro casos: **o maior gasto é coberto primeiro** (10 + 90 com 60: 0 e 60; 60 + 15 + 15: 60 e 0; 10 + 50 + 60: 0, 0 e 60). O 9E fecha com ela porque o crédito de 10 que o Cartão trouxe de setembro pagou 10 do gasto de 30 na Farmácia, e essa parte conta como dinheiro. Não vistos: empate entre cartões; se a ordem é por cartão ou por transação; qual saída consome o crédito trazido quando há várias no mesmo dia (o motor usa a maior; só o 9E mostra isso). A biblioteca Kotlin (offsets ~1,30M–1,45M) foi lida em parte: tem `Calculations` com os campos do cartão (1312078–1312411), mas a lógica da soma do mês não aparece nela.
 
 Outras funcionalidades ainda não olhadas:
 - regras de empréstimo/hipoteca além da reconciliação (`isLoanAccount`);
