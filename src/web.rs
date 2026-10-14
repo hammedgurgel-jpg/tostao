@@ -6,22 +6,58 @@
 //! (`"80,50"`, `"-1.234,56"`); valores que voltam são inteiros em milésimos
 //! (`formatarValor` devolve o texto para a tela); datas são `AAAA-MM-DD` e
 //! meses são `AAAA-MM`. Plano e contas voltam como texto JSON.
+//!
+//! A sincronização ([`Tostao::sincronizar`]) fala com o servidor pelo `fetch`
+//! do navegador ([`FetchTransport`]). O token vem a cada chamada e não é
+//! guardado: nem no aparelho, nem na cópia que a página grava.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use js_sys::{Error, Promise};
 use serde_json::{json, Value};
 use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::{future_to_promise, JsFuture};
+use web_sys::{Headers, Request, RequestInit, Response};
 
+use crate::api::{erro_do_servidor, ApiError, HttpResponse, Transport};
 use crate::aparelho::{
     formatar_valor, ler_data, ler_mes, ler_valor, Aparelho, Destino, Erro, LinhaDeConta, LinhaDoPlano, Plano, TipoDeConta,
 };
+use crate::protocol::{CatalogRequest, DEVICE_ID_HEADER, SERVER_VERSION_HEADER};
 
 fn erro_js(e: Erro) -> JsValue {
     JsValue::from_str(&e.to_string())
 }
 
+/// Erro de quem chama enquanto uma sincronização tem o aparelho emprestado.
+const OCUPADO: &str = "o aparelho está sincronizando; espere terminar";
+
 /// Um aparelho com o orçamento na memória do navegador.
 #[wasm_bindgen]
 pub struct Tostao {
-    aparelho: Aparelho,
+    /// Vazio só enquanto uma sincronização tem o aparelho (ver
+    /// [`Tostao::sincronizar`]). O `Rc` deixa a sincronização devolvê-lo
+    /// depois do `await`, sem segurar o `RefCell` durante a espera.
+    aparelho: Rc<RefCell<Option<Aparelho>>>,
+}
+
+impl Tostao {
+    fn novo(aparelho: Aparelho) -> Tostao {
+        Tostao { aparelho: Rc::new(RefCell::new(Some(aparelho))) }
+    }
+
+    fn ler<R>(&self, fazer: impl FnOnce(&Aparelho) -> Result<R, Erro>) -> Result<R, JsValue> {
+        let guarda = self.aparelho.borrow();
+        let aparelho = guarda.as_ref().ok_or_else(|| JsValue::from_str(OCUPADO))?;
+        fazer(aparelho).map_err(erro_js)
+    }
+
+    fn mudar<R>(&mut self, fazer: impl FnOnce(&mut Aparelho) -> Result<R, Erro>) -> Result<R, JsValue> {
+        let mut guarda = self.aparelho.borrow_mut();
+        let aparelho = guarda.as_mut().ok_or_else(|| JsValue::from_str(OCUPADO))?;
+        fazer(aparelho).map_err(erro_js)
+    }
 }
 
 #[wasm_bindgen]
@@ -29,64 +65,68 @@ impl Tostao {
     /// Cria um orçamento novo, com a categoria "A atribuir".
     #[wasm_bindgen(js_name = novoOrcamento)]
     pub fn novo_orcamento(nome: &str) -> Tostao {
-        Tostao { aparelho: Aparelho::novo_orcamento(nome) }
+        Tostao::novo(Aparelho::novo_orcamento(nome))
     }
 
     /// Prepara um aparelho para um orçamento que já está no servidor; a
     /// primeira sincronização traz tudo.
     #[wasm_bindgen(js_name = paraOrcamento)]
     pub fn para_orcamento(orcamento: &str) -> Tostao {
-        Tostao { aparelho: Aparelho::para_orcamento(orcamento) }
+        Tostao::novo(Aparelho::para_orcamento(orcamento))
     }
 
     /// Lê a cópia local gravada por [`Tostao::para_json`].
     #[wasm_bindgen(js_name = deJson)]
     pub fn de_json(texto: &str) -> Result<Tostao, JsValue> {
-        Aparelho::de_json(texto).map(|aparelho| Tostao { aparelho }).map_err(erro_js)
+        Aparelho::de_json(texto).map(Tostao::novo).map_err(erro_js)
     }
 
     /// A cópia local como texto JSON, para guardar no navegador.
     #[wasm_bindgen(js_name = paraJson)]
     pub fn para_json(&self) -> Result<String, JsValue> {
-        self.aparelho.para_json().map_err(erro_js)
+        self.ler(|a| a.para_json())
     }
 
-    pub fn orcamento(&self) -> String {
-        self.aparelho.orcamento().to_owned()
+    pub fn orcamento(&self) -> Result<String, JsValue> {
+        self.ler(|a| Ok(a.orcamento().to_owned()))
     }
 
-    pub fn id(&self) -> String {
-        self.aparelho.id().to_owned()
+    pub fn id(&self) -> Result<String, JsValue> {
+        self.ler(|a| Ok(a.id().to_owned()))
     }
 
     /// Mudanças feitas aqui que o servidor ainda não recebeu.
     #[wasm_bindgen(js_name = mudancasPendentes)]
-    pub fn mudancas_pendentes(&self) -> usize {
-        self.aparelho.mudancas_pendentes()
+    pub fn mudancas_pendentes(&self) -> Result<usize, JsValue> {
+        self.ler(|a| Ok(a.mudancas_pendentes()))
     }
 
     /// `tipo`: corrente, poupanca, dinheiro, cartao ou acompanhamento.
     #[wasm_bindgen(js_name = criarConta)]
     pub fn criar_conta(&mut self, nome: &str, tipo: &str) -> Result<(), JsValue> {
-        let tipo = TipoDeConta::ler(tipo).ok_or_else(|| JsValue::from_str(&format!("tipo de conta desconhecido: {tipo}")))?;
-        self.aparelho.criar_conta(nome, tipo).map(|_| ()).map_err(erro_js)
+        self.mudar(|a| {
+            let tipo = TipoDeConta::ler(tipo).ok_or_else(|| Erro::Valor(format!("tipo de conta desconhecido: {tipo}")))?;
+            a.criar_conta(nome, tipo).map(|_| ())
+        })
     }
 
     #[wasm_bindgen(js_name = criarGrupo)]
     pub fn criar_grupo(&mut self, nome: &str) -> Result<(), JsValue> {
-        self.aparelho.criar_grupo(nome).map(|_| ()).map_err(erro_js)
+        self.mudar(|a| a.criar_grupo(nome).map(|_| ()))
     }
 
     #[wasm_bindgen(js_name = criarCategoria)]
     pub fn criar_categoria(&mut self, nome: &str, grupo: &str) -> Result<(), JsValue> {
-        self.aparelho.criar_categoria(nome, grupo).map(|_| ()).map_err(erro_js)
+        self.mudar(|a| a.criar_categoria(nome, grupo).map(|_| ()))
     }
 
     /// `valor` em reais, como digitado (`"50"`, `"80,50"`); `mes` é `AAAA-MM`.
     pub fn atribuir(&mut self, categoria: &str, valor: &str, mes: &str) -> Result<(), JsValue> {
-        let valor = ler_valor(valor).map_err(erro_js)?;
-        let mes = ler_mes(mes).map_err(erro_js)?;
-        self.aparelho.atribuir(categoria, mes, valor).map_err(erro_js)
+        self.mudar(|a| {
+            let valor = ler_valor(valor)?;
+            let mes = ler_mes(mes)?;
+            a.atribuir(categoria, mes, valor)
+        })
     }
 
     /// Lança uma transação. `valor` em reais, como digitado (saída é
@@ -99,27 +139,101 @@ impl Tostao {
         categoria: Option<String>,
         transferir_para: Option<String>,
     ) -> Result<(), JsValue> {
-        let valor = ler_valor(valor).map_err(erro_js)?;
-        let data = ler_data(data).map_err(erro_js)?;
-        let destino = match (categoria, transferir_para) {
-            (Some(_), Some(_)) => return Err(JsValue::from_str("use categoria ou transferência, não as duas")),
-            (Some(c), None) => Destino::Categoria(c),
-            (None, Some(c)) => Destino::Transferencia(c),
-            (None, None) => Destino::SemCategoria,
-        };
-        self.aparelho.lancar(conta, data, valor, &destino).map(|_| ()).map_err(erro_js)
+        self.mudar(|a| {
+            let valor = ler_valor(valor)?;
+            let data = ler_data(data)?;
+            let destino = match (categoria, transferir_para) {
+                (Some(_), Some(_)) => return Err(Erro::Valor("use categoria ou transferência, não as duas".into())),
+                (Some(c), None) => Destino::Categoria(c),
+                (None, Some(c)) => Destino::Transferencia(c),
+                (None, None) => Destino::SemCategoria,
+            };
+            a.lancar(conta, data, valor, &destino).map(|_| ())
+        })
     }
 
     /// O plano do mês (`AAAA-MM`), calculado aqui, como texto JSON.
     pub fn plano(&self, mes: &str) -> Result<String, JsValue> {
-        let mes = ler_mes(mes).map_err(erro_js)?;
-        self.aparelho.plano(mes).map(|p| plano_json(&p).to_string()).map_err(erro_js)
+        self.ler(|a| {
+            let mes = ler_mes(mes)?;
+            a.plano(mes).map(|p| plano_json(&p).to_string())
+        })
     }
 
     /// As contas e os saldos, como texto JSON.
     pub fn contas(&self) -> Result<String, JsValue> {
-        self.aparelho.contas().map(|c| contas_json(&c).to_string()).map_err(erro_js)
+        self.ler(|a| a.contas().map(|c| contas_json(&c).to_string()))
     }
+
+    /// Sincroniza com o servidor pelo `fetch` do navegador. `servidor` é a
+    /// origem (ex.: `http://127.0.0.1:8080`); `token` é o que a pessoa
+    /// digitou e vale só para esta chamada. Devolve uma Promise; até ela
+    /// resolver, as outras chamadas dão erro de "sincronizando".
+    pub fn sincronizar(&mut self, servidor: &str, token: &str) -> Result<Promise, JsValue> {
+        let mut aparelho = self.aparelho.borrow_mut().take().ok_or_else(|| JsValue::from_str(OCUPADO))?;
+        let transporte = FetchTransport::new(servidor, token, aparelho.id());
+        let token = token.to_owned();
+        let guarda = Rc::clone(&self.aparelho);
+        Ok(future_to_promise(async move {
+            let resultado = aparelho.sincronizar(transporte, &token).await;
+            // O aparelho volta mesmo quando a sincronização falha.
+            *guarda.borrow_mut() = Some(aparelho);
+            resultado.map(|_| JsValue::UNDEFINED).map_err(erro_js)
+        }))
+    }
+}
+
+/// [`Transport`] pelo `fetch` do navegador. O token e o id do aparelho vão
+/// só nos cabeçalhos desta requisição.
+struct FetchTransport {
+    servidor: String,
+    token: String,
+    device_id: String,
+}
+
+impl FetchTransport {
+    fn new(servidor: &str, token: &str, device_id: &str) -> Self {
+        Self {
+            servidor: servidor.trim_end_matches('/').to_owned(),
+            token: token.to_owned(),
+            device_id: device_id.to_owned(),
+        }
+    }
+
+    /// Manda o `POST` e espera a resposta inteira (status e corpo).
+    async fn enviar(&self, path: &str, corpo: &str) -> Result<(Response, String), JsValue> {
+        let cabecalhos = Headers::new()?;
+        cabecalhos.set("Authorization", &format!("Bearer {}", self.token))?;
+        cabecalhos.set(DEVICE_ID_HEADER, &self.device_id)?;
+        cabecalhos.set("Content-Type", "application/json")?;
+        let init = RequestInit::new();
+        init.set_method("POST");
+        init.set_headers(&cabecalhos);
+        init.set_body(&JsValue::from_str(corpo));
+        let pedido = Request::new_with_str_and_init(&format!("{}{path}", self.servidor), &init)?;
+        let janela = web_sys::window().ok_or_else(|| JsValue::from_str("sem janela no navegador"))?;
+        let resposta: Response = JsFuture::from(janela.fetch_with_request(&pedido)).await?.dyn_into()?;
+        let texto = JsFuture::from(resposta.text()?).await?.as_string().unwrap_or_default();
+        Ok((resposta, texto))
+    }
+}
+
+impl Transport for FetchTransport {
+    async fn post(&mut self, path: &str, body: &CatalogRequest) -> Result<HttpResponse, ApiError> {
+        let corpo = serde_json::to_string(body).map_err(|e| ApiError::Transport(e.to_string()))?;
+        let (resposta, texto) = self.enviar(path, &corpo).await.map_err(|e| ApiError::Transport(mensagem_js(&e)))?;
+        if !resposta.ok() {
+            return Err(ApiError::Server(erro_do_servidor(resposta.status(), &texto)));
+        }
+        let versao = resposta.headers().get(SERVER_VERSION_HEADER).ok().flatten();
+        let data: Value = serde_json::from_str(&texto).map_err(|e| ApiError::Transport(e.to_string()))?;
+        Ok(HttpResponse { headers: versao.map(|v| (SERVER_VERSION_HEADER.to_owned(), v)).into_iter().collect(), data })
+    }
+}
+
+/// O texto de um erro do JavaScript (um `TypeError` do `fetch`, por exemplo).
+fn mensagem_js(e: &JsValue) -> String {
+    e.dyn_ref::<Error>().map(|erro| String::from(erro.message())).or_else(|| e.as_string()).unwrap_or_else(|| format!("{e:?}"))
 }
 
 /// Milésimos em texto, como a tela: `1.234,56`. Recebe `f64` (e não `i64`,

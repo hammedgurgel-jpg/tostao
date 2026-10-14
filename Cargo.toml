@@ -11,14 +11,16 @@ publish = false
 default = ["servidor", "http", "arquivo"]
 # Leitura e gravação da cópia do aparelho em arquivo (`Aparelho::abrir`, `salvar`…).
 arquivo = []
-# Transporte HTTP do aparelho (`http::HttpTransport`, com `ureq`).
-http = ["dep:ureq"]
+# Transporte HTTP do aparelho (`http::HttpTransport`, com `ureq`). O binário
+# `tostao` espera a sincronização (`async`) com um executor mínimo.
+http = ["dep:ureq", "dep:futures-executor"]
 # Servidor: `server::SyncServer` (SQLite) e o atendimento HTTP (`tiny_http`).
 servidor = ["http", "dep:rusqlite", "dep:tiny_http"]
 # Ponte para o navegador (`web`): o núcleo exposto ao JavaScript com
-# wasm-bindgen. Não é padrão; ver `web/construir.ps1`. A versão é fixa para
-# bater com o CLI `wasm-bindgen` usado no build.
-web = ["dep:wasm-bindgen"]
+# wasm-bindgen, e a sincronização pelo `fetch`. Não é padrão; ver
+# `web/construir.ps1`. A versão é fixa para bater com o CLI `wasm-bindgen`
+# usado no build.
+web = ["dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:js-sys", "dep:web-sys"]
 
 [dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["std"] }
@@ -28,13 +30,21 @@ serde_json = { version = "1", features = ["preserve_order"] }
 rusqlite = { version = "0.40.2", features = ["bundled"], optional = true }
 tiny_http = { version = "0.12", optional = true }
 ureq = { version = "2", default-features = false, optional = true }
+futures-executor = { version = "0.3", optional = true }
 # Ids aleatórios (ver `aparelho::novo_id`). No navegador, a fonte é
 # `crypto.getRandomValues`, pela feature `js`.
 getrandom = "0.2"
 wasm-bindgen = { version = "=0.2.129", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+js-sys = { version = "0.3", optional = true }
+web-sys = { version = "0.3", optional = true, features = ["Window", "Headers", "Request", "RequestInit", "Response"] }
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
+
+[dev-dependencies]
+# Os testes esperam a sincronização (`async`) com `block_on`.
+futures-executor = "0.3"
 
 [[bin]]
 name = "tostao"
@@ -54,6 +64,11 @@ required-features = ["arquivo"]
 [[test]]
 name = "server"
 path = "tests/server.rs"
+required-features = ["servidor"]
+
+[[test]]
+name = "cors"
+path = "tests/cors.rs"
 required-features = ["servidor"]
 
 [[test]]

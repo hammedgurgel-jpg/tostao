@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
+use futures_executor::block_on;
 use serde_json::{json, Map, Value};
 use tostao::api::{ApiError, ApiV1, ServerError};
 use tostao::knowledge::BudgetKnowledge;
@@ -106,7 +107,7 @@ impl Device {
     }
 
     fn sync(&mut self, sync_type: SyncType) -> Result<SyncResult, SyncError> {
-        self.sync.internal_sync_budget_data_with_server(Some(BUDGET), Some(&self.knowledge), sync_type)
+        block_on(self.sync.internal_sync_budget_data_with_server(Some(BUDGET), Some(&self.knowledge), sync_type))
     }
 
     fn get(&self, kind: &str, id: &str) -> Option<&Value> {

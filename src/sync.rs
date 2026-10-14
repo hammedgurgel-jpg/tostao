@@ -89,7 +89,7 @@ impl<T: Transport, H: BudgetHost> BudgetSync<T, H> {
         Self { api, host, budget_schema_version, budget_sync_in_progress: false }
     }
 
-    pub fn internal_sync_budget_data_with_server(
+    pub async fn internal_sync_budget_data_with_server(
         &mut self,
         budget_version_id: Option<&str>,
         knowledge: Option<&Arc<Mutex<BudgetKnowledge>>>,
@@ -106,7 +106,7 @@ impl<T: Transport, H: BudgetHost> BudgetSync<T, H> {
         }
         self.budget_sync_in_progress = true;
         // `finally { this._budgetSyncInProgress = false }`
-        let outcome = self.sync_inner(budget_version_id, knowledge, sync_type, &mut result);
+        let outcome = self.sync_inner(budget_version_id, knowledge, sync_type, &mut result).await;
         self.budget_sync_in_progress = false;
 
         match outcome {
@@ -120,7 +120,7 @@ impl<T: Transport, H: BudgetHost> BudgetSync<T, H> {
         }
     }
 
-    fn sync_inner(
+    async fn sync_inner(
         &mut self,
         budget_version_id: Option<&str>,
         knowledge: Option<&Arc<Mutex<BudgetKnowledge>>>,
@@ -141,14 +141,14 @@ impl<T: Transport, H: BudgetHost> BudgetSync<T, H> {
             return Err(SyncError::KnowledgeNotSpecified);
         };
 
-        match self.send_and_apply(budget_version_id, knowledge, sync_type, result) {
+        match self.send_and_apply(budget_version_id, knowledge, sync_type, result).await {
             Ok(()) => Ok(Flow::Completed),
             Err(SyncError::Api(api_error)) => self.recover_from_api_error(api_error, knowledge, result),
             Err(other) => Err(other),
         }
     }
 
-    fn send_and_apply(
+    async fn send_and_apply(
         &mut self,
         budget_version_id: &str,
         knowledge: &Arc<Mutex<BudgetKnowledge>>,
@@ -193,7 +193,7 @@ impl<T: Transport, H: BudgetHost> BudgetSync<T, H> {
             schema_version_of_knowledge: l,
             changed_entities,
         };
-        let http = self.api.sync_budget_data_with_server(&request).map_err(SyncError::Api)?;
+        let http = self.api.sync_budget_data_with_server(&request).await.map_err(SyncError::Api)?;
         result.server_app_version = http.header(SERVER_VERSION_HEADER).map(str::to_owned);
         let response: SyncBudgetDataResponse =
             serde_json::from_value(http.data).map_err(|e| SyncError::Decode(e.to_string()))?;

@@ -472,7 +472,7 @@ impl InMemoryTransport {
 }
 
 impl Transport for InMemoryTransport {
-    fn post(&mut self, path: &str, body: &CatalogRequest) -> Result<HttpResponse, ApiError> {
+    async fn post(&mut self, path: &str, body: &CatalogRequest) -> Result<HttpResponse, ApiError> {
         if path != CATALOG_PATH {
             return Err(ApiError::Transport(format!("rota desconhecida: {path}")));
         }

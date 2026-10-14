@@ -42,6 +42,28 @@
   <p class="suave" id="pendentes"></p>
 
   <section>
+    <h2>Sincronizar com o servidor</h2>
+    <form id="form-sincronizar">
+      <label>Servidor <input id="servidor" type="url" value="http://127.0.0.1:8080" required></label>
+      <label>Token <input id="token" type="password" autocomplete="off" required></label>
+      <button type="submit" id="sincronizar">Sincronizar</button>
+    </form>
+    <p class="suave" id="sincronizacao" role="status"></p>
+    <p class="suave">Id do orçamento: <span id="orcamento-id">—</span></p>
+    <p class="suave">Id deste aparelho: <span id="aparelho-id">—</span></p>
+    <p class="suave">O token não é guardado no navegador: digite-o a cada sincronização.</p>
+  </section>
+
+  <section>
+    <h2>Entrar num orçamento que já está no servidor</h2>
+    <form id="form-entrar">
+      <label>Id do orçamento <input id="entrar-id" required></label>
+      <button type="submit">Entrar</button>
+    </form>
+    <p class="suave">Este aparelho passa a usar esse orçamento. A primeira sincronização traz tudo.</p>
+  </section>
+
+  <section>
     <h2>A atribuir e plano do mês</h2>
     <p class="suave" id="a-atribuir"></p>
     <table>

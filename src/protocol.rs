@@ -16,6 +16,9 @@ pub const TOSTAO_SCHEMA_VERSION: i64 = 1;
 /// Cabeçalho de resposta lido como versão do servidor.
 pub const SERVER_VERSION_HEADER: &str = "X-Tostao-Server-Version";
 
+/// Cabeçalho com o id do aparelho (nome escolhido aqui).
+pub const DEVICE_ID_HEADER: &str = "X-Tostao-Device-Id";
+
 /// Envelope enviado em `/api/v1/catalog`: o nome da operação e o corpo
 /// serializado como texto JSON dentro de `request_data`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

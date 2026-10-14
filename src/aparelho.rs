@@ -515,13 +515,14 @@ impl Aparelho {
     /// Sincronização incremental: envia as mudanças pendentes e recebe as
     /// do servidor. Não grava nada: quem guarda a cópia grava depois, com
     /// [`Aparelho::para_json`] (ou `salvar`, com a feature `arquivo`).
-    pub fn sincronizar<T: Transport>(&mut self, transport: T, token: &str) -> Result<SyncResult, Erro> {
+    pub async fn sincronizar<T: Transport>(&mut self, transport: T, token: &str) -> Result<SyncResult, Erro> {
         let mut api = ApiV1::new(transport);
         api.session_token = Some(token.to_owned());
         let knowledge = Arc::new(Mutex::new(BudgetKnowledge::from(self.copia.conhecimento)));
         let orcamento = self.copia.orcamento.clone();
         let mut sync = BudgetSync::new(api, std::mem::take(&mut self.copia), TOSTAO_SCHEMA_VERSION);
-        let resultado = sync.internal_sync_budget_data_with_server(Some(&orcamento), Some(&knowledge), SyncType::Delta);
+        let resultado =
+            sync.internal_sync_budget_data_with_server(Some(&orcamento), Some(&knowledge), SyncType::Delta).await;
         self.copia = sync.host;
         let resultado = resultado.map_err(Erro::Sincronizacao)?;
         if let Some(e) = self.copia.permissao_negada.take() {

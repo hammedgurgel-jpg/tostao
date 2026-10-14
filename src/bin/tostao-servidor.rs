@@ -19,6 +19,8 @@ Opções (ou variáveis de ambiente):
   --porta <número>      TOSTAO_PORTA     porta (padrão: 8080; 0 = qualquer livre)
   --endereco <ip>       TOSTAO_ENDERECO  endereço (padrão: 127.0.0.1, só esta máquina)
   --usuario <nome>      TOSTAO_USUARIO   usuário dono dos orçamentos (padrão: familia)
+  --origem <url>        TOSTAO_ORIGEM    origem da página no navegador, ex.: http://127.0.0.1:8000
+                                         (pode repetir; no ambiente, separe por vírgula)
   --ajuda                                mostra esta ajuda
 ";
 
@@ -40,6 +42,9 @@ fn executar() -> Result<(), String> {
     let mut porta = ambiente("TOSTAO_PORTA").unwrap_or_else(|| "8080".into());
     let mut endereco = ambiente("TOSTAO_ENDERECO").unwrap_or_else(|| "127.0.0.1".into());
     let mut usuario = ambiente("TOSTAO_USUARIO").unwrap_or_else(|| "familia".into());
+    let mut origens: Vec<String> = ambiente("TOSTAO_ORIGEM")
+        .map(|v| v.split(',').map(|o| o.trim().trim_end_matches('/').to_owned()).filter(|o| !o.is_empty()).collect())
+        .unwrap_or_default();
 
     while let Some(arg) = args.next() {
         let mut valor = || args.next().ok_or_else(|| format!("falta o valor de {arg}"));
@@ -49,6 +54,7 @@ fn executar() -> Result<(), String> {
             "--porta" => porta = valor()?,
             "--endereco" => endereco = valor()?,
             "--usuario" => usuario = valor()?,
+            "--origem" => origens.push(valor()?.trim_end_matches('/').to_owned()),
             "--ajuda" | "-h" | "--help" => {
                 print!("{AJUDA}");
                 return Ok(());
@@ -69,9 +75,14 @@ fn executar() -> Result<(), String> {
         eprintln!("aviso: ouvindo em {endereco}, fora desta máquina; o token é a única proteção e o tráfego não é cifrado");
     }
     println!("Tostão: servidor em http://{ouvindo} (banco: {banco}, usuário: {usuario})");
+    if origens.is_empty() {
+        println!("Nenhuma origem de página liberada (use --origem para a página no navegador).");
+    } else {
+        println!("Páginas liberadas (CORS): {}", origens.join(", "));
+    }
     println!("Ctrl+C para parar.");
     let _ = std::io::stdout().flush();
 
-    servir(&http, &mut servidor, &Acesso { usuario, token });
+    servir(&http, &mut servidor, &Acesso { usuario, token, origens });
     Ok(())
 }

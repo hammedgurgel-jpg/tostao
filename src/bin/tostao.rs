@@ -171,7 +171,7 @@ fn executar() -> Result<(), Box<dyn std::error::Error>> {
             let mut a = Aparelho::abrir(&arquivo)?;
             let enviando = a.mudancas_pendentes();
             let transporte = HttpTransport::new(&servidor, &token()?, a.id());
-            let r = a.sincronizar(transporte, &token()?)?;
+            let r = futures_executor::block_on(a.sincronizar(transporte, &token()?))?;
             a.salvar()?;
             let conhecimento = r.server_response.map_or(0, |r| r.current_server_knowledge);
             println!("Sincronizado com {servidor}: {enviando} mudança(s) enviada(s); conhecimento do servidor {conhecimento}.");

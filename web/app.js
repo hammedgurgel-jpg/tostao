@@ -5,6 +5,8 @@ let t;
 // Falso quando o navegador não deixou ler a cópia guardada: nesse caso a
 // página não grava, para não sobrescrever o que já está lá.
 let guardando = true;
+// Verdadeiro enquanto a sincronização está com o aparelho: nada mais mexe nele.
+let sincronizando = false;
 
 function esc(texto) {
   return String(texto).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -95,6 +97,7 @@ async function carregarAparelho() {
 }
 
 function render() {
+  if (sincronizando) return;
   const plano = JSON.parse(t.plano($("mes").value));
   const contas = JSON.parse(t.contas());
 
@@ -144,6 +147,10 @@ async function aposMudanca() {
 function acao(fn) {
   return async (evento) => {
     evento.preventDefault();
+    if (sincronizando) {
+      $("erro").textContent = "Espere a sincronização terminar.";
+      return;
+    }
     try {
       fn();
     } catch (e) {
@@ -155,6 +162,70 @@ function acao(fn) {
     evento.target.reset();
     $("lancar-data").value = hojeIso();
   };
+}
+
+function mostrarIds() {
+  $("orcamento-id").textContent = t.orcamento();
+  $("aparelho-id").textContent = t.id();
+}
+
+/**
+ * Sincroniza com o servidor. O token vem do campo e vale só para esta chamada:
+ * não é gravado no aparelho nem na cópia. Depois, a cópia nova é guardada.
+ */
+async function sincronizarAgora(evento) {
+  evento.preventDefault();
+  const servidor = $("servidor").value.trim();
+  const token = $("token").value;
+  if (!servidor || !token) {
+    $("sincronizacao").textContent = "Informe o servidor e o token.";
+    return;
+  }
+  sincronizando = true;
+  $("sincronizar").disabled = true;
+  $("sincronizacao").textContent = "Sincronizando…";
+  try {
+    await t.sincronizar(servidor, token);
+    $("sincronizacao").textContent = `Sincronizado com ${servidor}.`;
+  } catch (e) {
+    $("sincronizacao").textContent = `Não deu para sincronizar: ${e}`;
+  } finally {
+    $("token").value = "";
+    sincronizando = false;
+    $("sincronizar").disabled = false;
+  }
+  $("erro").textContent = "";
+  if (guardando) {
+    try {
+      await gravarCopia(t.paraJson());
+    } catch (e) {
+      $("erro").textContent = `Não deu para guardar no navegador (${e}). A sincronização só existe nesta aba.`;
+    }
+  }
+  render();
+}
+
+/** Troca a cópia deste aparelho pela de outro orçamento que já está no servidor. */
+async function entrarNoOrcamento(evento) {
+  evento.preventDefault();
+  const id = $("entrar-id").value.trim();
+  if (!id) return;
+  const pendentes = t.mudancasPendentes();
+  if (pendentes > 0 && !confirm(`Há ${pendentes} mudança(s) não enviada(s) neste aparelho. Entrar em outro orçamento as descarta. Continuar?`)) {
+    return;
+  }
+  try {
+    t = Tostao.paraOrcamento(id);
+    if (guardando) await gravarCopia(t.paraJson());
+  } catch (e) {
+    $("erro").textContent = `Não deu para entrar nesse orçamento (${e}).`;
+    return;
+  }
+  $("erro").textContent = "";
+  $("sincronizacao").textContent = "Entrou no orçamento. Sincronize para trazer os dados.";
+  $("entrar-id").value = "";
+  mostrarIds();
+  render();
 }
 
 async function principal() {
@@ -170,6 +241,9 @@ async function principal() {
 
   $("mes").value = mesAtual();
   $("lancar-data").value = hojeIso();
+  mostrarIds();
+  $("form-sincronizar").addEventListener("submit", sincronizarAgora);
+  $("form-entrar").addEventListener("submit", entrarNoOrcamento);
   $("mes").addEventListener("change", () => {
     try {
       render();

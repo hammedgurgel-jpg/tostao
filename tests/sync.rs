@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use futures_executor::block_on;
 use serde_json::{json, Value};
 use tostao::api::{ApiError, ApiV1, HttpResponse, ServerError, Transport};
 use tostao::knowledge::BudgetKnowledge;
@@ -16,7 +17,7 @@ struct FakeTransport {
 }
 
 impl Transport for FakeTransport {
-    fn post(&mut self, path: &str, body: &CatalogRequest) -> Result<HttpResponse, ApiError> {
+    async fn post(&mut self, path: &str, body: &CatalogRequest) -> Result<HttpResponse, ApiError> {
         assert_eq!(path, "/api/v1/catalog");
         self.sent.push(body.clone());
         if let Some(k) = &self.bump_during_request {
@@ -104,11 +105,32 @@ fn engine(reply: Result<Value, ServerError>) -> BudgetSync<FakeTransport, FakeHo
     BudgetSync::new(api, FakeHost::default(), SCHEMA)
 }
 
+/// A sincronização é `async`; estes testes a esperam aqui, com `block_on`.
+trait SincronizarEsperando {
+    fn sincronizar_esperando(
+        &mut self,
+        budget_version_id: Option<&str>,
+        knowledge: Option<&Arc<Mutex<BudgetKnowledge>>>,
+        sync_type: SyncType,
+    ) -> Result<SyncResult, SyncError>;
+}
+
+impl<T: Transport, H: BudgetHost> SincronizarEsperando for BudgetSync<T, H> {
+    fn sincronizar_esperando(
+        &mut self,
+        budget_version_id: Option<&str>,
+        knowledge: Option<&Arc<Mutex<BudgetKnowledge>>>,
+        sync_type: SyncType,
+    ) -> Result<SyncResult, SyncError> {
+        block_on(self.internal_sync_budget_data_with_server(budget_version_id, knowledge, sync_type))
+    }
+}
+
 #[test]
 fn request_keeps_bundle_field_order() {
     let mut e = engine(Ok(response(SCHEMA, 120, 7)));
     let k = knowledge(7, 5, 100, SCHEMA);
-    e.internal_sync_budget_data_with_server(Some("bv-1"), Some(&k), SyncType::Delta).unwrap();
+    e.sincronizar_esperando(Some("bv-1"), Some(&k), SyncType::Delta).unwrap();
 
     let sent = &e.api.transport.sent[0];
     assert_eq!(sent.operation_name, "syncBudgetData");
@@ -132,7 +154,7 @@ fn request_keeps_bundle_field_order() {
 fn successful_delta_persists_server_knowledge_and_flags_collision() {
     let mut e = engine(Ok(response(SCHEMA, 120, 7)));
     let k = knowledge(7, 5, 100, SCHEMA);
-    let r = e.internal_sync_budget_data_with_server(Some("bv-1"), Some(&k), SyncType::Delta).unwrap();
+    let r = e.sincronizar_esperando(Some("bv-1"), Some(&k), SyncType::Delta).unwrap();
 
     assert_eq!(r.server_app_version.as_deref(), Some("9.9.9"));
     let k = *k.lock().unwrap();
@@ -146,7 +168,7 @@ fn successful_delta_persists_server_knowledge_and_flags_collision() {
 fn backfill_zeroes_knowledge_window() {
     let mut e = engine(Ok(response(SCHEMA, 120, 7)));
     let k = knowledge(7, 5, 100, SCHEMA);
-    e.internal_sync_budget_data_with_server(Some("bv-1"), Some(&k), SyncType::Backfill).unwrap();
+    e.sincronizar_esperando(Some("bv-1"), Some(&k), SyncType::Backfill).unwrap();
     let body: Value = serde_json::from_str(&e.api.transport.sent[0].request_data).unwrap();
     assert_eq!(body["starting_device_knowledge"], 0);
     assert_eq!(body["ending_device_knowledge"], 0);
@@ -157,7 +179,7 @@ fn backfill_zeroes_knowledge_window() {
 fn rejects_unexpected_schema_version() {
     let mut e = engine(Ok(response(SCHEMA + 1, 120, 7)));
     let k = knowledge(7, 5, 100, SCHEMA);
-    let err = e.internal_sync_budget_data_with_server(Some("bv-1"), Some(&k), SyncType::Delta).unwrap_err();
+    let err = e.sincronizar_esperando(Some("bv-1"), Some(&k), SyncType::Delta).unwrap_err();
     assert!(matches!(err, SyncError::UnexpectedSchemaVersion { expected: SCHEMA, received: 43 }));
     assert_eq!(e.host.completed, 0);
 }
@@ -166,7 +188,7 @@ fn rejects_unexpected_schema_version() {
 fn rejects_response_older_than_knowledge_schema() {
     let mut e = engine(Ok(response(SCHEMA, 120, 7)));
     let k = knowledge(7, 5, 100, SCHEMA + 5);
-    let err = e.internal_sync_budget_data_with_server(Some("bv-1"), Some(&k), SyncType::Delta).unwrap_err();
+    let err = e.sincronizar_esperando(Some("bv-1"), Some(&k), SyncType::Delta).unwrap_err();
     assert!(matches!(err, SyncError::SchemaVersionBelowKnowledge { response: SCHEMA, knowledge: 47 }));
 }
 
@@ -174,12 +196,12 @@ fn rejects_response_older_than_knowledge_schema() {
 fn server_knowing_more_than_device_is_fatal_unless_device_is_fresh() {
     let mut e = engine(Ok(response(SCHEMA, 120, 50)));
     let k = knowledge(7, 5, 100, SCHEMA);
-    let err = e.internal_sync_budget_data_with_server(Some("bv-1"), Some(&k), SyncType::Delta).unwrap_err();
+    let err = e.sincronizar_esperando(Some("bv-1"), Some(&k), SyncType::Delta).unwrap_err();
     assert!(matches!(err, SyncError::ServerKnowsMoreAboutDevice));
 
     let mut e = engine(Ok(response(SCHEMA, 120, 50)));
     let k = knowledge(0, 0, 0, SCHEMA);
-    e.internal_sync_budget_data_with_server(Some("bv-1"), Some(&k), SyncType::Delta).unwrap();
+    e.sincronizar_esperando(Some("bv-1"), Some(&k), SyncType::Delta).unwrap();
     assert_eq!(k.lock().unwrap().current_device_knowledge, 50);
 }
 
@@ -188,7 +210,7 @@ fn delta_ignores_incoming_when_local_changes_happened_in_flight() {
     let mut e = engine(Ok(response(SCHEMA, 120, 7)));
     let k = knowledge(7, 5, 100, SCHEMA);
     e.api.transport.bump_during_request = Some(k.clone());
-    e.internal_sync_budget_data_with_server(Some("bv-1"), Some(&k), SyncType::Delta).unwrap();
+    e.sincronizar_esperando(Some("bv-1"), Some(&k), SyncType::Delta).unwrap();
     assert_eq!(e.host.handled, 0);
     assert_eq!(k.lock().unwrap().device_knowledge_of_server, 100);
 }
@@ -202,7 +224,7 @@ fn swallows_knowledge_exceeds_error_when_device_knows_enough() {
     };
     let mut e = engine(Err(err));
     let k = knowledge(7, 5, 100, SCHEMA);
-    let r = e.internal_sync_budget_data_with_server(Some("bv-1"), Some(&k), SyncType::Delta).unwrap();
+    let r = e.sincronizar_esperando(Some("bv-1"), Some(&k), SyncType::Delta).unwrap();
     assert!(r.server_had_changed_entities);
     assert_eq!(e.host.completed, 0);
 }
@@ -212,12 +234,12 @@ fn permission_denied_is_handled_and_401_clears_token() {
     let err = ServerError { status_code: 403, id: ERR_NO_READ_PERMISSIONS.into(), data: None };
     let mut e = engine(Err(err));
     let k = knowledge(7, 5, 100, SCHEMA);
-    e.internal_sync_budget_data_with_server(Some("bv-1"), Some(&k), SyncType::Delta).unwrap();
+    e.sincronizar_esperando(Some("bv-1"), Some(&k), SyncType::Delta).unwrap();
     assert_eq!(e.host.permission_denied, 1);
 
     let err = ServerError { status_code: 401, id: "unauthorized".into(), data: None };
     let mut e = engine(Err(err));
-    assert!(e.internal_sync_budget_data_with_server(Some("bv-1"), Some(&k), SyncType::Delta).is_err());
+    assert!(e.sincronizar_esperando(Some("bv-1"), Some(&k), SyncType::Delta).is_err());
     assert!(e.api.session_token.is_none());
 }
 
@@ -226,20 +248,20 @@ fn read_only_blocks_writes_but_allows_pulls() {
     let mut e = engine(Ok(response(SCHEMA, 120, 7)));
     e.api.is_read_only = true;
     let k = knowledge(7, 5, 100, SCHEMA);
-    let err = e.internal_sync_budget_data_with_server(Some("bv-1"), Some(&k), SyncType::Delta).unwrap_err();
+    let err = e.sincronizar_esperando(Some("bv-1"), Some(&k), SyncType::Delta).unwrap_err();
     assert!(matches!(err, SyncError::Api(ApiError::WriteRequestWhileReadOnly(_))));
 
     // sem mudanças a enviar (ending == starting): puxar é permitido
     e.api.transport.reply = Ok(response(SCHEMA, 120, 5));
     let k = knowledge(5, 5, 100, SCHEMA);
-    e.internal_sync_budget_data_with_server(Some("bv-1"), Some(&k), SyncType::Delta).unwrap();
+    e.sincronizar_esperando(Some("bv-1"), Some(&k), SyncType::Delta).unwrap();
     assert_eq!(e.host.imported, 0, "não importa transações em só-leitura");
 }
 
 #[test]
 fn missing_budget_version_returns_early() {
     let mut e = engine(Ok(response(SCHEMA, 120, 7)));
-    let r = e.internal_sync_budget_data_with_server(None, None, SyncType::Delta).unwrap();
+    let r = e.sincronizar_esperando(None, None, SyncType::Delta).unwrap();
     assert!(r.server_had_changed_entities);
     assert!(e.api.transport.sent.is_empty());
 }

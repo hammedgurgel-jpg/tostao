@@ -62,6 +62,16 @@ python -m http.server 8000
 Abra `http://127.0.0.1:8000/index.html`. O `construir.ps1` gera `web/pkg/`
 (ignorado pelo git).
 
+Para sincronizar pela página, suba o servidor com a origem dela
+(`--origem http://127.0.0.1:8000`, ver [Subir o servidor](#subir-o-servidor)),
+digite o endereço do servidor e o token no campo "Sincronizar com o
+servidor" e clique em Sincronizar. O token não é guardado no navegador: a
+cópia do aparelho no IndexedDB não tem o token, e o campo é limpo depois do
+envio. Para o segundo aparelho entrar no mesmo orçamento, copie o "Id do
+orçamento" de um deles e use "Entrar num orçamento" (o segundo aparelho
+precisa estar em outra origem, por exemplo `http://127.0.0.1:8001`, porque
+o IndexedDB é separado por origem).
+
 ## Usar só num aparelho, sem servidor
 
 O aparelho calcula sozinho: o `plano` e o `contas` saem do motor rodando
@@ -98,6 +108,7 @@ esse terminal aberto; `Ctrl+C` para.
 | `--porta` | `TOSTAO_PORTA` | `8080` | porta; `0` escolhe uma livre |
 | `--endereco` | `TOSTAO_ENDERECO` | `127.0.0.1` | endereço; outro valor expõe o servidor na rede |
 | `--usuario` | `TOSTAO_USUARIO` | `familia` | usuário dono dos orçamentos |
+| `--origem` | `TOSTAO_ORIGEM` | (nenhuma) | origem de uma página no navegador, ex.: `http://127.0.0.1:8000`; pode repetir (no ambiente, separe por vírgula). Sem ela, a página não consegue sincronizar |
 
 Não há TLS: para usar de outra máquina (por exemplo, pelo Tailscale), passe
 `--endereco` com o IP da interface certa e confie na rede, não no token.

@@ -1,5 +1,7 @@
 //! Adaptador da API v1: envelope do catálogo e bloqueio de escrita em só-leitura.
 
+use std::future::Future;
+
 use crate::protocol::{operation, CatalogRequest, SyncBudgetDataRequest, CATALOG_PATH};
 use serde_json::Value;
 
@@ -39,8 +41,11 @@ pub enum ApiError {
 /// Transporte HTTP. A codificação do corpo no fio não foi observada
 /// (a captura não extraiu o formato da requisição); fica a cargo de quem
 /// implementa.
+///
+/// `async` porque, no navegador, o envio é um `fetch`. No binário, o
+/// [`HttpTransport`](crate::http::HttpTransport) bloqueia dentro da espera.
 pub trait Transport {
-    fn post(&mut self, path: &str, body: &CatalogRequest) -> Result<HttpResponse, ApiError>;
+    fn post(&mut self, path: &str, body: &CatalogRequest) -> impl Future<Output = Result<HttpResponse, ApiError>>;
 }
 
 pub struct ApiV1<T: Transport> {
@@ -56,7 +61,7 @@ impl<T: Transport> ApiV1<T> {
 
     /// `sendCatalogRequest`: checa só-leitura, depois envia
     /// `{operation_name, request_data: JSON.stringify(e)}`.
-    pub fn send_catalog_request(
+    pub async fn send_catalog_request(
         &mut self,
         operation_name: &str,
         request_data: &Value,
@@ -66,15 +71,15 @@ impl<T: Transport> ApiV1<T> {
             operation_name: operation_name.to_owned(),
             request_data: request_data.to_string(),
         };
-        self.transport.post(CATALOG_PATH, &body)
+        self.transport.post(CATALOG_PATH, &body).await
     }
 
-    pub fn sync_budget_data_with_server(
+    pub async fn sync_budget_data_with_server(
         &mut self,
         request: &SyncBudgetDataRequest,
     ) -> Result<HttpResponse, ApiError> {
         let data = serde_json::to_value(request).map_err(|e| ApiError::Transport(e.to_string()))?;
-        self.send_catalog_request(operation::SYNC_BUDGET_DATA, &data)
+        self.send_catalog_request(operation::SYNC_BUDGET_DATA, &data).await
     }
 
     /// `throwIfWriteRequestWhileReadOnly`.
@@ -107,4 +112,33 @@ impl<T: Transport> ApiV1<T> {
 pub fn has_changed_entities(request_data: &Value) -> bool {
     let read = |k: &str| request_data.get(k).and_then(Value::as_i64).unwrap_or(0);
     read("ending_device_knowledge") > read("starting_device_knowledge")
+}
+
+/// Erro do servidor a partir do status e do corpo `{"error": {"id", "data"}}`.
+/// Sem um corpo desses, o id é `http_<status>`. É o mesmo formato para
+/// qualquer transporte (ureq ou `fetch`).
+pub fn erro_do_servidor(status_code: u16, corpo: &str) -> ServerError {
+    let error = serde_json::from_str::<Value>(corpo).ok().and_then(|v| v.get("error").cloned());
+    let id = error.as_ref().and_then(|e| e.get("id")?.as_str().map(str::to_owned));
+    let data = error.and_then(|e| e.get("data").cloned()).filter(|d| !d.is_null());
+    ServerError { status_code, id: id.unwrap_or_else(|| format!("http_{status_code}")), data }
+}
+
+#[cfg(test)]
+mod testes {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn erro_do_corpo_traz_id_e_dados() {
+        let corpo = r#"{"error":{"id":"unauthorized","data":{"message":"x"}}}"#;
+        let erro = erro_do_servidor(401, corpo);
+        assert_eq!(erro, ServerError { status_code: 401, id: "unauthorized".into(), data: Some(json!({"message": "x"})) });
+    }
+
+    #[test]
+    fn corpo_que_nao_e_erro_vira_id_pelo_status() {
+        let erro = erro_do_servidor(502, "<html>");
+        assert_eq!(erro, ServerError { status_code: 502, id: "http_502".into(), data: None });
+    }
 }

@@ -1,8 +1,11 @@
 //! O aparelho de linha de comando: leitura e escrita de valores e meses, e o
 //! cálculo feito no próprio aparelho, sem servidor.
 
+use futures_executor::block_on;
 use tostao::aparelho::{formatar_valor, ler_mes, ler_valor, Aparelho, Destino, Plano, TipoDeConta};
+use tostao::api::{ApiError, HttpResponse, Transport};
 use tostao::dates::Date;
+use tostao::protocol::CatalogRequest;
 
 #[test]
 fn le_valores_em_reais() {
@@ -101,4 +104,23 @@ fn roteiro_1_sem_servidor() {
     assert_eq!(saldo("Cartão"), Some(-85_000));
 
     let _ = std::fs::remove_dir_all(&pasta);
+}
+
+/// Transporte que não alcança servidor nenhum.
+struct SemRede;
+
+impl Transport for SemRede {
+    async fn post(&mut self, _: &str, _: &CatalogRequest) -> Result<HttpResponse, ApiError> {
+        Err(ApiError::Transport("sem rede neste teste".into()))
+    }
+}
+
+/// O token que a pessoa digita vale só para a chamada: não entra na cópia
+/// do aparelho (que vai para o IndexedDB ou para o arquivo).
+#[test]
+fn o_token_nao_entra_na_copia_do_aparelho() {
+    let mut a = Aparelho::novo_orcamento("Família");
+    let erro = block_on(a.sincronizar(SemRede, "token-secreto-123")).unwrap_err();
+    assert!(erro.to_string().contains("não deu para falar com o servidor"), "{erro}");
+    assert!(!a.para_json().unwrap().contains("token-secreto-123"));
 }

@@ -22,20 +22,21 @@
 use std::io::Read;
 
 #[cfg(feature = "servidor")]
-use serde_json::json;
-use serde_json::Value;
+use serde_json::{json, Value};
 
-use crate::api::{ApiError, HttpResponse, ServerError, Transport};
+use crate::api::{erro_do_servidor, ApiError, HttpResponse, Transport};
+#[cfg(feature = "servidor")]
+use crate::api::ServerError;
 #[cfg(feature = "servidor")]
 use crate::protocol::operation;
 use crate::protocol::CatalogRequest;
 #[cfg(feature = "servidor")]
-use crate::protocol::CATALOG_PATH;
+use crate::protocol::{CATALOG_PATH, SERVER_VERSION_HEADER};
+// `DEVICE_ID_HEADER` vem de `protocol` (também usado pela ponte do navegador).
 #[cfg(feature = "servidor")]
 use crate::server::{SyncServer, ERR_INVALID_REQUEST};
 
-/// Cabeçalho com o id do aparelho (nome escolhido aqui).
-pub const DEVICE_ID_HEADER: &str = "X-Tostao-Device-Id";
+pub use crate::protocol::DEVICE_ID_HEADER;
 
 #[cfg(feature = "servidor")]
 pub const ERR_UNAUTHORIZED: &str = "unauthorized";
@@ -46,12 +47,38 @@ pub const ERR_NOT_FOUND: &str = "not_found";
 #[cfg(feature = "servidor")]
 const MAX_BODY: u64 = 64 * 1024 * 1024;
 
-/// Quem pode usar o servidor: um usuário fixo e o token dele.
+/// Quem pode usar o servidor: um usuário fixo, o token dele e as origens das
+/// páginas que podem falar com ele (ver [`cabecalhos_cors`]).
 #[cfg(feature = "servidor")]
 #[derive(Debug, Clone)]
 pub struct Acesso {
     pub usuario: String,
     pub token: String,
+    /// Ex.: `http://127.0.0.1:8000`, sem barra final. Vazio: nenhuma página.
+    pub origens: Vec<String>,
+}
+
+/// Cabeçalhos CORS para a origem da requisição, se ela estiver na lista. Fora
+/// da lista não sai nenhum: o navegador então não entrega a resposta à página.
+/// O preflight (`OPTIONS`) recebe também os métodos e cabeçalhos permitidos.
+#[cfg(feature = "servidor")]
+pub fn cabecalhos_cors(origens: &[String], origem: Option<&str>, preflight: bool) -> Vec<(String, String)> {
+    let Some(origem) = origem.filter(|o| origens.iter().any(|permitida| permitida == o)) else {
+        return Vec::new();
+    };
+    let mut cabecalhos = vec![
+        ("Access-Control-Allow-Origin".to_owned(), origem.to_owned()),
+        ("Vary".to_owned(), "Origin".to_owned()),
+    ];
+    if preflight {
+        cabecalhos.push(("Access-Control-Allow-Methods".into(), "POST".into()));
+        cabecalhos.push(("Access-Control-Allow-Headers".into(), format!("Authorization, Content-Type, {DEVICE_ID_HEADER}")));
+        cabecalhos.push(("Access-Control-Max-Age".into(), "600".into()));
+    } else {
+        // Sem isto, a página não consegue ler a versão do servidor.
+        cabecalhos.push(("Access-Control-Expose-Headers".into(), SERVER_VERSION_HEADER.into()));
+    }
+    cabecalhos
 }
 
 /// Atende os pedidos, um de cada vez, até o `tiny_http` parar.
@@ -62,14 +89,28 @@ pub fn servir(http: &tiny_http::Server, servidor: &mut SyncServer, acesso: &Aces
     }
 }
 
-/// Atende um pedido e responde.
+/// Valor de um cabeçalho da requisição, sem diferença de maiúsculas.
+#[cfg(feature = "servidor")]
+fn cabecalho(request: &tiny_http::Request, nome: &str) -> Option<String> {
+    request.headers().iter().find(|h| h.field.as_str().as_str().eq_ignore_ascii_case(nome)).map(|h| h.value.as_str().to_owned())
+}
+
+/// Atende um pedido e responde. O preflight do navegador (`OPTIONS`) é
+/// respondido sem token, como manda o CORS.
 #[cfg(feature = "servidor")]
 pub fn atender(servidor: &mut SyncServer, acesso: &Acesso, mut request: tiny_http::Request) {
-    let (status, headers, body) = match responder(servidor, acesso, &mut request) {
-        Ok(r) => (200, r.headers, r.data),
-        Err(e) => (e.status_code, Vec::new(), json!({ "error": { "id": e.id, "data": e.data } })),
+    let origem = cabecalho(&request, "Origin");
+    let preflight = *request.method() == tiny_http::Method::Options;
+    let (status, mut headers, corpo) = if preflight {
+        (204, Vec::new(), String::new())
+    } else {
+        match responder(servidor, acesso, &mut request) {
+            Ok(r) => (200, r.headers, r.data.to_string()),
+            Err(e) => (e.status_code, Vec::new(), json!({ "error": { "id": e.id, "data": e.data } }).to_string()),
+        }
     };
-    let mut response = tiny_http::Response::from_string(body.to_string()).with_status_code(status);
+    headers.extend(cabecalhos_cors(&acesso.origens, origem.as_deref(), preflight));
+    let mut response = tiny_http::Response::from_string(corpo).with_status_code(status);
     for (k, v) in headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).chain([("Content-Type", "application/json")]) {
         if let Ok(h) = tiny_http::Header::from_bytes(k.as_bytes(), v.as_bytes()) {
             response.add_header(h);
@@ -87,9 +128,7 @@ fn responder(
     if request.url() != CATALOG_PATH || *request.method() != tiny_http::Method::Post {
         return Err(erro(404, ERR_NOT_FOUND, json!({ "path": request.url() })));
     }
-    let header = |name: &str| {
-        request.headers().iter().find(|h| h.field.as_str().as_str().eq_ignore_ascii_case(name)).map(|h| h.value.as_str().to_owned())
-    };
+    let header = |name: &str| cabecalho(request, name);
     if header("Authorization").as_deref() != Some(format!("Bearer {}", acesso.token).as_str()) {
         return Err(ServerError { status_code: 401, id: ERR_UNAUTHORIZED.into(), data: None });
     }
@@ -149,7 +188,8 @@ impl HttpTransport {
 
 #[cfg(feature = "http")]
 impl Transport for HttpTransport {
-    fn post(&mut self, path: &str, body: &CatalogRequest) -> Result<HttpResponse, ApiError> {
+    /// Bloqueante por dentro (ureq): a espera do `async` não sai do lugar.
+    async fn post(&mut self, path: &str, body: &CatalogRequest) -> Result<HttpResponse, ApiError> {
         let body = serde_json::to_string(body).map_err(|e| ApiError::Transport(e.to_string()))?;
         let result = self
             .agent
@@ -168,14 +208,7 @@ impl Transport for HttpTransport {
             }
             Err(ureq::Error::Status(status_code, response)) => {
                 let text = response.into_string().unwrap_or_default();
-                let error = serde_json::from_str::<Value>(&text).ok().and_then(|v| v.get("error").cloned());
-                let id = error.as_ref().and_then(|e| e.get("id")?.as_str().map(str::to_owned));
-                let data = error.and_then(|e| e.get("data").cloned()).filter(|d| !d.is_null());
-                Err(ApiError::Server(ServerError {
-                    status_code,
-                    id: id.unwrap_or_else(|| format!("http_{status_code}")),
-                    data,
-                }))
+                Err(ApiError::Server(erro_do_servidor(status_code, &text)))
             }
             Err(e) => Err(ApiError::Transport(e.to_string())),
         }
