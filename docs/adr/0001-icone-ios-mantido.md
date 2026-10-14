@@ -16,6 +16,6 @@ dedicado.
 
 ## Consequências
 
-- `tests/casca.rs` confere que o ícone da página bate com o do manifesto; o
-  `apple-touch-icon` usa o mesmo arquivo, então o ícone de iOS também é coberto.
+- `tests/casca.rs` (`cabecalho_da_pagina_bate_com_o_manifesto`) confere o link
+  `apple-touch-icon` pelo nome do arquivo, então a remoção do link quebra o teste.
 - Se o ícone mudar, troque o PNG de `web/icons/` e os dois `href` continuam valendo.

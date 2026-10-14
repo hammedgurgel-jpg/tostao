@@ -190,7 +190,7 @@ impl HttpTransport {
 impl Transport for HttpTransport {
     /// Bloqueante por dentro (ureq): a espera do `async` não sai do lugar.
     async fn post(&mut self, path: &str, body: &CatalogRequest) -> Result<HttpResponse, ApiError> {
-        let body = serde_json::to_string(body).map_err(|e| ApiError::Transport(e.to_string()))?;
+        let body = serde_json::to_string(body).map_err(|e| ApiError::Protocolo(e.to_string()))?;
         let result = self
             .agent
             .post(&format!("{}{path}", self.servidor))
@@ -203,7 +203,7 @@ impl Transport for HttpTransport {
                 let headers =
                     response.headers_names().into_iter().filter_map(|n| Some((n.clone(), response.header(&n)?.to_owned()))).collect();
                 let text = response.into_string().map_err(|e| ApiError::Transport(e.to_string()))?;
-                let data = serde_json::from_str(&text).map_err(|e| ApiError::Transport(e.to_string()))?;
+                let data = serde_json::from_str(&text).map_err(|e| ApiError::Protocolo(e.to_string()))?;
                 Ok(HttpResponse { headers, data })
             }
             Err(ureq::Error::Status(status_code, response)) => {

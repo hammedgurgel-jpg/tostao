@@ -230,13 +230,13 @@ impl FetchTransport {
 
 impl Transport for FetchTransport {
     async fn post(&mut self, path: &str, body: &CatalogRequest) -> Result<HttpResponse, ApiError> {
-        let corpo = serde_json::to_string(body).map_err(|e| ApiError::Transport(e.to_string()))?;
+        let corpo = serde_json::to_string(body).map_err(|e| ApiError::Protocolo(e.to_string()))?;
         let (resposta, texto) = self.enviar(path, &corpo).await.map_err(|e| ApiError::Transport(mensagem_js(&e)))?;
         if !resposta.ok() {
             return Err(ApiError::Server(erro_do_servidor(resposta.status(), &texto)));
         }
         let versao = resposta.headers().get(SERVER_VERSION_HEADER).ok().flatten();
-        let data: Value = serde_json::from_str(&texto).map_err(|e| ApiError::Transport(e.to_string()))?;
+        let data: Value = serde_json::from_str(&texto).map_err(|e| ApiError::Protocolo(e.to_string()))?;
         Ok(HttpResponse { headers: versao.map(|v| (SERVER_VERSION_HEADER.to_owned(), v)).into_iter().collect(), data })
     }
 }

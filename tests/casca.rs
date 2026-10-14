@@ -114,6 +114,7 @@ fn casca_atualiza_em_segundo_plano_sem_versao_manual() {
     let codigo = fs::read_to_string(web().join("sw.js")).expect("web/sw.js");
     assert!(!codigo.contains("tostao-casca-v"), "CACHE com versão à mão em sw.js");
     assert!(codigo.contains("fetch(alvo)"), "sw.js não busca a casca na rede em segundo plano");
+    assert!(codigo.contains("evento.waitUntil("), "a gravação da casca nova precisa de waitUntil");
 }
 
 /// Cor do tema e ícones aparecem na página e no manifesto: os dois têm de bater.
@@ -124,6 +125,8 @@ fn cabecalho_da_pagina_bate_com_o_manifesto() {
     let cor = m["theme_color"].as_str().expect("theme_color");
     assert!(html.contains(&format!("<meta name=\"theme-color\" content=\"{cor}\">")), "theme-color diferente do manifesto");
     assert!(html.contains("<link rel=\"manifest\" href=\"manifest.webmanifest\">"));
+    // O iOS usa este link, não o manifesto, para o ícone da tela inicial.
+    assert!(html.contains("<link rel=\"apple-touch-icon\" href=\"icons/icon-192.png\">"), "sem apple-touch-icon");
     let icone = m["icons"][0]["src"].as_str().expect("src do ícone");
     assert!(html.contains(&format!("href=\"{icone}\"")), "ícone da página diferente do manifesto");
 }

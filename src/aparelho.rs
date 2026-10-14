@@ -75,6 +75,9 @@ impl std::fmt::Display for Erro {
             Erro::Sincronizacao(SyncError::Api(ApiError::Transport(m))) => {
                 write!(f, "não deu para falar com o servidor: {m}")
             }
+            Erro::Sincronizacao(SyncError::Api(ApiError::Protocolo(m))) => {
+                write!(f, "o servidor respondeu algo que não é o protocolo esperado: {m}")
+            }
             Erro::Sincronizacao(SyncError::UnexpectedSchemaVersion { expected, received }) => write!(
                 f,
                 "o servidor usa a versão de esquema {received} e este aparelho a {expected}; atualize o que estiver atrás"

@@ -150,6 +150,21 @@ fn resposta_do_servidor_nao_e_falha_de_rede() {
     assert!(!erro.e_falha_de_rede(), "{erro}");
 }
 
+/// Resposta que chegou mas não é protocolo (corpo que não é JSON) não é
+/// falha de rede: o servidor foi alcançado.
+#[test]
+fn resposta_fora_do_protocolo_nao_e_falha_de_rede() {
+    struct Corpo;
+    impl Transport for Corpo {
+        async fn post(&mut self, _: &str, _: &CatalogRequest) -> Result<HttpResponse, ApiError> {
+            Err(ApiError::Protocolo("expected value at line 1 column 1".into()))
+        }
+    }
+    let mut a = Aparelho::novo_orcamento("Família");
+    let erro = block_on(a.sincronizar(Corpo, "token")).unwrap_err();
+    assert!(!erro.e_falha_de_rede(), "{erro}");
+}
+
 /// Transporte que responde uma sincronização válida, sem entidades do servidor.
 struct Responde;
 

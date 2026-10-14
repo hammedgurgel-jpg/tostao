@@ -45,24 +45,24 @@ self.addEventListener("fetch", (evento) => {
   // Só GET do próprio site. A sincronização (POST para o servidor, outra
   // origem) passa direto: sem rede ela falha e a página mostra o erro.
   if (pedido.method !== "GET" || new URL(pedido.url).origin !== self.location.origin) return;
-  evento.respondWith(responder(pedido));
+  evento.respondWith(responder(evento));
 });
 
-async function responder(pedido) {
+async function responder(evento) {
+  const pedido = evento.request;
   const cache = await caches.open(CACHE);
   // Navegar para qualquer endereço abre a página; o app não tem outras telas.
   const alvo = pedido.mode === "navigate" ? INICIO : pedido;
   const url = typeof alvo === "string" ? alvo : alvo.url;
   const guardado = await cache.match(alvo);
-  // A rede é consultada sempre: a resposta nova entra no cache para a próxima
-  // abertura. Sem cópia guardada, ela é a própria resposta.
-  const rede = fetch(alvo).then((resposta) => {
-    if (resposta.ok && CASCA.has(url)) cache.put(alvo, resposta.clone());
-    return resposta;
-  });
-  if (guardado) {
-    rede.catch(() => {});
-    return guardado;
-  }
-  return rede;
+  // A rede é consultada sempre. A gravação entra em waitUntil: o navegador
+  // mantém o service worker vivo até ela terminar, senão a casca fica velha.
+  const rede = fetch(alvo);
+  evento.waitUntil(
+    rede
+      .then((resposta) => (resposta.ok && CASCA.has(url) ? cache.put(alvo, resposta.clone()) : undefined))
+      .catch(() => {})
+  );
+  // Sem cópia guardada, a resposta da rede é a própria resposta.
+  return guardado ?? rede;
 }

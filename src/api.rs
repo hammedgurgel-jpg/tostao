@@ -35,7 +35,11 @@ pub enum ApiError {
     Server(ServerError),
     /// `WriteRequestWhileReadOnlyError`.
     WriteRequestWhileReadOnly(String),
+    /// O servidor não foi alcançado (sem rede, conexão recusada, etc.).
     Transport(String),
+    /// Resposta ou pedido que não segue o protocolo (corpo que não é JSON,
+    /// por exemplo). Não é falha de rede.
+    Protocolo(String),
 }
 
 /// Transporte HTTP. A codificação do corpo no fio não foi observada
@@ -78,7 +82,7 @@ impl<T: Transport> ApiV1<T> {
         &mut self,
         request: &SyncBudgetDataRequest,
     ) -> Result<HttpResponse, ApiError> {
-        let data = serde_json::to_value(request).map_err(|e| ApiError::Transport(e.to_string()))?;
+        let data = serde_json::to_value(request).map_err(|e| ApiError::Protocolo(e.to_string()))?;
         self.send_catalog_request(operation::SYNC_BUDGET_DATA, &data).await
     }
 
