@@ -2,14 +2,19 @@
 //! roteiro 1 da análise 01 por dois aparelhos (`tostao`), via HTTP.
 
 use std::io::{BufRead, BufReader};
+use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdout, Command, Stdio};
+use std::time::{Duration, Instant};
 
 const TOKEN: &str = "segredo-de-teste";
 
 /// O servidor rodando; é parado no fim do teste.
 struct Servidor {
     processo: Child,
+    /// Leitor da saída do servidor, guardado até o fim do teste: se ele fosse
+    /// solto logo, o servidor tomaria erro ao imprimir e morreria.
+    _saida: BufReader<ChildStdout>,
     url: String,
 }
 
@@ -21,11 +26,26 @@ impl Servidor {
             .stdout(Stdio::piped())
             .spawn()
             .expect("sobe o servidor");
+        let mut saida = BufReader::new(processo.stdout.take().unwrap());
         let mut primeira = String::new();
-        BufReader::new(processo.stdout.take().unwrap()).read_line(&mut primeira).unwrap();
+        saida.read_line(&mut primeira).unwrap();
         // "Tostão: servidor em http://127.0.0.1:PORTA (banco: …)"
         let url = primeira.split_whitespace().find(|p| p.starts_with("http://")).expect("endereço na saída").to_owned();
-        Servidor { processo, url }
+        let mut servidor = Servidor { processo, _saida: saida, url };
+        servidor.esperar_aceitar();
+        servidor
+    }
+
+    /// A linha da saída só diz o endereço: espera a conexão ser aceita antes
+    /// de seguir, para o primeiro cliente não tomar "conexão recusada".
+    fn esperar_aceitar(&mut self) {
+        let endereco: SocketAddr = self.url.trim_start_matches("http://").parse().expect("endereço do servidor");
+        let limite = Instant::now() + Duration::from_secs(10);
+        while TcpStream::connect_timeout(&endereco, Duration::from_millis(200)).is_err() {
+            assert!(self.processo.try_wait().unwrap().is_none(), "o servidor morreu ao subir");
+            assert!(Instant::now() < limite, "o servidor não aceitou conexões em 10 s");
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 }
 

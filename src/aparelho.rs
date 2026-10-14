@@ -520,7 +520,9 @@ impl Aparelho {
         api.session_token = Some(token.to_owned());
         let knowledge = Arc::new(Mutex::new(BudgetKnowledge::from(self.copia.conhecimento)));
         let orcamento = self.copia.orcamento.clone();
-        let mut sync = BudgetSync::new(api, std::mem::take(&mut self.copia), TOSTAO_SCHEMA_VERSION);
+        // A sincronização trabalha sobre um clone: se esta future for descartada
+        // no `await`, `self.copia` continua inteira (o `mem::take` a deixava vazia).
+        let mut sync = BudgetSync::new(api, self.copia.clone(), TOSTAO_SCHEMA_VERSION);
         let resultado =
             sync.internal_sync_budget_data_with_server(Some(&orcamento), Some(&knowledge), SyncType::Delta).await;
         self.copia = sync.host;

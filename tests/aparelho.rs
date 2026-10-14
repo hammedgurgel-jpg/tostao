@@ -1,6 +1,9 @@
 //! O aparelho de linha de comando: leitura e escrita de valores e meses, e o
 //! cálculo feito no próprio aparelho, sem servidor.
 
+use std::future::Future;
+use std::task::{Context, Waker};
+
 use futures_executor::block_on;
 use tostao::aparelho::{formatar_valor, ler_mes, ler_valor, Aparelho, Destino, Plano, TipoDeConta};
 use tostao::api::{ApiError, HttpResponse, Transport};
@@ -130,16 +133,20 @@ struct Responde;
 
 impl Transport for Responde {
     async fn post(&mut self, _: &str, _: &CatalogRequest) -> Result<HttpResponse, ApiError> {
-        let data = serde_json::json!({
-            "changed_entities": {},
-            "current_server_knowledge": 5,
-            "error": null,
-            "schema_version_of_response": TOSTAO_SCHEMA_VERSION,
-            "schema_version_of_server": TOSTAO_SCHEMA_VERSION,
-            "server_knowledge_of_device": 0
-        });
-        Ok(HttpResponse { headers: vec![("X-Tostao-Server-Version".into(), "9.9.9".into())], data })
+        Ok(resposta_valida())
     }
+}
+
+fn resposta_valida() -> HttpResponse {
+    let data = serde_json::json!({
+        "changed_entities": {},
+        "current_server_knowledge": 5,
+        "error": null,
+        "schema_version_of_response": TOSTAO_SCHEMA_VERSION,
+        "schema_version_of_server": TOSTAO_SCHEMA_VERSION,
+        "server_knowledge_of_device": 0
+    });
+    HttpResponse { headers: vec![("X-Tostao-Server-Version".into(), "9.9.9".into())], data }
 }
 
 /// O caminho com sucesso também não põe o token na cópia do aparelho.
@@ -150,4 +157,46 @@ fn sincronizacao_com_sucesso_nao_grava_o_token_na_copia() {
     let resultado = block_on(a.sincronizar(Responde, "token-secreto-456")).unwrap();
     assert_eq!(resultado.server_app_version.as_deref(), Some("9.9.9"));
     assert!(!a.para_json().unwrap().contains("token-secreto-456"));
+}
+
+/// Transporte que trava na primeira chamada (a future fica pendente para
+/// sempre) e responde nas seguintes.
+struct TravadoNaPrimeira {
+    chamadas: usize,
+}
+
+impl Transport for TravadoNaPrimeira {
+    async fn post(&mut self, _: &str, _: &CatalogRequest) -> Result<HttpResponse, ApiError> {
+        self.chamadas += 1;
+        if self.chamadas == 1 {
+            std::future::pending::<()>().await;
+        }
+        Ok(resposta_valida())
+    }
+}
+
+/// Sincronização cancelada no meio do `await` (a future é descartada): o
+/// aparelho continua com o orçamento e as mudanças pendentes, e a próxima
+/// sincronização funciona.
+#[test]
+fn sincronizacao_cancelada_no_meio_nao_esvazia_o_aparelho() {
+    let mut a = Aparelho::novo_orcamento("Família");
+    a.criar_conta("Corrente", TipoDeConta::Corrente).unwrap();
+    let pendentes = a.mudancas_pendentes();
+    assert!(pendentes > 0);
+    {
+        let mut futura = std::pin::pin!(a.sincronizar(TravadoNaPrimeira { chamadas: 0 }, "token"));
+        let mut cx = Context::from_waker(Waker::noop());
+        assert!(futura.as_mut().poll(&mut cx).is_pending());
+    }
+
+    assert!(!a.orcamento().is_empty(), "a cópia saiu da memória durante a espera");
+    assert_eq!(a.mudancas_pendentes(), pendentes);
+    let contas = a.contas().unwrap();
+    assert!(contas.iter().any(|c| c.nome == "Corrente"), "o orçamento sumiu: {contas:?}");
+
+    let resultado = block_on(a.sincronizar(Responde, "token")).unwrap();
+    assert!(!resultado.sync_cancelled_because_another_in_flight);
+    let contas = a.contas().unwrap();
+    assert!(contas.iter().any(|c| c.nome == "Corrente"), "a sincronização seguinte perdeu o orçamento");
 }
