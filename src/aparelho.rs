@@ -786,10 +786,11 @@ fn estouro_de(calc: &SubCategoryMonthCalc, disponivel: i64) -> Option<Estouro> {
 }
 
 /// Falta da fatura: a dívida do cartão (saldo negativo da conta) menos o
-/// disponível da categoria de pagamento, sem passar de zero.
+/// dinheiro reservado na categoria de pagamento. Disponível negativo não
+/// reserva nada, então não aumenta a falta.
 fn falta_da_fatura(calculos: &Calculos, conta: &str, disponivel: i64) -> i64 {
     let divida = (-calculos.saldo(conta).map_or(0, |s| s.saldo)).max(0);
-    (divida - disponivel).max(0)
+    (divida - disponivel.max(0)).max(0)
 }
 
 /// Id novo, aleatório, no formato de um UUID (sem as garantias de versão).

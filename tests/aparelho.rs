@@ -294,3 +294,22 @@ fn estouro_falta_e_movimentacao_no_plano() {
     assert!(a.movimentar("Lazer", "Lazer", outubro, 1_000).is_err(), "origem e destino iguais");
     assert!(a.movimentar("Lazer", "A atribuir", outubro, 1_000).is_err(), "não se atribui a A atribuir");
 }
+
+/// Falta da fatura: com a fatura paga por transferência e o disponível da
+/// categoria de pagamento negativo, a falta é zero (a dívida do cartão é zero).
+#[test]
+fn falta_nao_soma_disponivel_negativo_da_categoria_de_pagamento() {
+    let dia = Date::from_ymd_opt(2026, 10, 13).unwrap();
+    let outubro = Date::from_ymd_opt(2026, 10, 1).unwrap();
+    let mut a = Aparelho::novo_orcamento("Família");
+    a.criar_conta("Corrente", TipoDeConta::Corrente).unwrap();
+    a.criar_conta("Cartão", TipoDeConta::Cartao).unwrap();
+    a.lancar("Corrente", dia, 1_000_000, &Destino::Categoria("A atribuir".into())).unwrap();
+    a.lancar("Cartão", dia, -25_000, &Destino::SemCategoria).unwrap();
+    a.lancar("Corrente", dia, -25_000, &Destino::Transferencia("Cartão".into())).unwrap();
+
+    let plano = a.plano(outubro).unwrap();
+    let pagamento = linha_completa(&plano, "Cartão");
+    assert_eq!(a.contas().unwrap().iter().find(|c| c.nome == "Cartão").unwrap().saldo, 0);
+    assert_eq!(pagamento.falta, 0, "fatura paga: nada falta");
+}
