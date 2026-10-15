@@ -22,7 +22,8 @@ use web_sys::{Headers, Request, RequestInit, Response};
 
 use crate::api::{erro_do_servidor, ApiError, HttpResponse, Transport};
 use crate::aparelho::{
-    formatar_valor, ler_data, ler_mes, ler_valor, Aparelho, Destino, Erro, LinhaDeConta, LinhaDoPlano, Plano, TipoDeConta,
+    formatar_valor, ler_data, ler_mes, ler_valor, Aparelho, Destino, Erro, Estouro, LinhaDeConta, LinhaDoPlano, Plano,
+    TipoDeConta,
 };
 use crate::protocol::{CatalogRequest, DEVICE_ID_HEADER, SERVER_VERSION_HEADER};
 
@@ -126,6 +127,16 @@ impl Tostao {
             let valor = ler_valor(valor)?;
             let mes = ler_mes(mes)?;
             a.atribuir(categoria, mes, valor)
+        })
+    }
+
+    /// Movimenta dinheiro de uma categoria para outra no mês (`"A atribuir"`
+    /// é a origem livre). `valor` em reais, como digitado; pode ser negativo.
+    pub fn movimentar(&mut self, origem: &str, destino: &str, mes: &str, valor: &str) -> Result<(), JsValue> {
+        self.mudar(|a| {
+            let valor = ler_valor(valor)?;
+            let mes = ler_mes(mes)?;
+            a.movimentar(origem, destino, mes, valor)
         })
     }
 
@@ -253,8 +264,23 @@ pub fn formatar(milesimos: f64) -> String {
     formatar_valor(milesimos as i64)
 }
 
+/// Uma linha do plano. `estouro` é `"dinheiro"`, `"credito"` ou `null`;
+/// `falta` é a falta da fatura (só na categoria de pagamento do cartão).
 fn linha_json(l: &LinhaDoPlano) -> Value {
-    json!({ "nome": l.nome, "atribuido": l.atribuido, "atividade": l.atividade, "disponivel": l.disponivel })
+    let estouro = match l.estouro {
+        Some(Estouro::Dinheiro) => json!("dinheiro"),
+        Some(Estouro::Credito) => json!("credito"),
+        None => Value::Null,
+    };
+    json!({
+        "nome": l.nome,
+        "atribuido": l.atribuido,
+        "atividade": l.atividade,
+        "disponivel": l.disponivel,
+        "estouro": estouro,
+        "falta": l.falta,
+        "pagamento": l.pagamento,
+    })
 }
 
 fn plano_json(p: &Plano) -> Value {
@@ -311,6 +337,9 @@ mod testes {
         assert_eq!(mercado["atribuido"], json!(50_000));
         assert_eq!(mercado["atividade"], json!(-80_000));
         assert_eq!(mercado["disponivel"], json!(-30_000));
+        assert_eq!(mercado["estouro"], "dinheiro", "estouro em dinheiro, pronto para a tela");
+        assert_eq!(mercado["falta"], json!(0));
+        assert_eq!(mercado["pagamento"], json!(false));
 
         let contas = contas_json(&a.contas().unwrap());
         assert_eq!(contas[0]["saldo"], json!(920_000));

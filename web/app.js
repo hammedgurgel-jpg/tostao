@@ -5,17 +5,12 @@ let t;
 // Falso quando o navegador não deixou ler a cópia guardada: nesse caso a
 // página não grava, para não sobrescrever o que já está lá.
 let guardando = true;
+// O último plano e as contas que a tela mostrou: as folhas leem daqui.
+let planoAtual = null;
+let contasAtuais = [];
 
 function esc(texto) {
   return String(texto).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-}
-
-function celula(valor) {
-  return `<td class="${valor < 0 ? "negativo" : ""}">${formatarValor(valor)}</td>`;
-}
-
-function linhaDoPlano(l, recuo) {
-  return `<tr><td>${recuo}${esc(l.nome)}</td>${celula(l.atribuido)}${celula(l.atividade)}${celula(l.disponivel)}</tr>`;
 }
 
 function mesAtual() {
@@ -26,6 +21,13 @@ function mesAtual() {
 function hojeIso() {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+/** Mês `AAAA-MM` deslocado em `d` meses. */
+function somarMes(mes, d) {
+  const [ano, m] = mes.split("-").map(Number);
+  const x = new Date(ano, m - 1 + d, 1);
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`;
 }
 
 /** Preenche um <select> mantendo a escolha atual, se ainda existir. */
@@ -94,41 +96,90 @@ async function carregarAparelho() {
   return Tostao.novoOrcamento("Família");
 }
 
-function render() {
-  const plano = JSON.parse(t.plano($("mes").value));
-  const contas = JSON.parse(t.contas());
+// ---------- Plano do mês (variante A) ----------
 
-  const pendentes = t.mudancasPendentes();
-  $("pendentes").textContent = `${pendentes} mudança(s) ainda não enviada(s) ao servidor.`;
+/** Cor da faixa e das pílulas: verde > 0, cinza 0, vermelho < 0. */
+const classeDoValor = (v) => (v > 0 ? "positivo" : v < 0 ? "negativo" : "zero");
 
-  $("a-atribuir").textContent =
-    plano.a_atribuir === null
-      ? "A atribuir: — (nada lançado nem atribuído até este mês)"
-      : `A atribuir: ${formatarValor(plano.a_atribuir)}`;
+/** Pílula da disponível: vermelho no estouro em dinheiro, amarelo no crédito e na fatura com falta. */
+function pilula(l) {
+  if (l.estouro === "dinheiro") return "negativo";
+  if (l.estouro === "credito" || l.falta > 0) return "aviso";
+  return classeDoValor(l.disponivel);
+}
 
-  const linhas = [];
-  for (const g of plano.grupos) {
-    linhas.push(`<tr class="grupo"><td colspan="4">${esc(g.nome)}</td></tr>`);
-    for (const c of g.categorias) linhas.push(linhaDoPlano(c, "&nbsp;&nbsp;"));
+/** Explicação curta embaixo do nome da categoria. */
+function notaDaLinha(l) {
+  if (l.estouro === "dinheiro") return "Estourou em dinheiro: sai do A atribuir do mês seguinte";
+  if (l.estouro === "credito") return "Estourou no crédito: vira dívida no cartão";
+  if (l.falta > 0) return `Falta R$ ${formatarValor(l.falta)} para a fatura`;
+  return "";
+}
+
+function todasCategorias() {
+  return planoAtual.grupos.flatMap((g) => g.categorias);
+}
+
+function categoriaPorNome(nome) {
+  return todasCategorias().find((c) => c.nome === nome);
+}
+
+function linhaDaCategoria(l) {
+  const nota = notaDaLinha(l);
+  return `<button type="button" class="linha" data-categoria="${esc(l.nome)}" aria-label="${esc(l.nome)}: atribuir ou mover">
+    <span class="nome">${esc(l.nome)}${nota ? `<span class="nota">${esc(nota)}</span>` : ""}</span>
+    <span class="num">${formatarValor(l.atribuido)}</span>
+    <span class="num"><span class="pilula ${pilula(l)}">${formatarValor(l.disponivel)}</span></span>
+  </button>`;
+}
+
+function renderPlano(plano) {
+  planoAtual = plano;
+  const a = plano.a_atribuir;
+  $("faixa").className = `faixa ${a === null ? "zero" : classeDoValor(a)}`;
+  $("a-atribuir").textContent = a === null ? "—" : `R$ ${formatarValor(a)}`;
+  $("faixa-nota").textContent =
+    a === null ? "Nada lançado nem atribuído até este mês" : a < 0 ? "Atribuiu mais do que tem" : a > 0 ? "Dinheiro livre para atribuir" : "Tudo atribuído";
+
+  const grupos = plano.grupos.map((g) => {
+    const atribuido = g.categorias.reduce((s, c) => s + c.atribuido, 0);
+    const disponivel = g.categorias.reduce((s, c) => s + c.disponivel, 0);
+    return `<div class="grupo" style="margin: 0 0 12px">
+      <div class="grupo-cabeca"><span>${esc(g.nome)}</span><span class="num">${formatarValor(atribuido)}</span><span class="num ${disponivel < 0 ? "negativo" : ""}">${formatarValor(disponivel)}</span></div>
+      ${g.categorias.map(linhaDaCategoria).join("")}
+    </div>`;
+  });
+  if (plano.sem_categoria) {
+    const s = plano.sem_categoria;
+    grupos.push(`<div class="grupo" style="margin: 0">
+      <div class="linha" style="cursor: default">
+        <span class="nome">Sem categoria<span class="nota">Gastos que ainda não têm categoria</span></span>
+        <span class="num"></span>
+        <span class="num ${s.disponivel < 0 ? "negativo" : ""}">${formatarValor(s.disponivel)}</span>
+      </div>
+    </div>`);
   }
-  if (plano.sem_categoria) linhas.push(linhaDoPlano(plano.sem_categoria, ""));
-  $("plano").innerHTML = linhas.join("");
+  $("plano").innerHTML = grupos.length ? grupos.join("") : `<p class="suave" style="padding: 0 14px 14px">Nenhum grupo ainda. Crie um grupo e uma categoria embaixo.</p>`;
+}
 
+function renderContas(contas) {
   $("contas").innerHTML = contas
     .map((c) => {
       const nome = c.orcamentaria ? c.nome : `${c.nome} (acompanhamento)`;
-      return `<tr><td>${esc(nome)}</td>${celula(c.saldo)}${celula(c.saldo_compensado)}</tr>`;
+      return `<tr><td>${esc(nome)}</td><td class="${c.saldo < 0 ? "negativo" : ""}">${formatarValor(c.saldo)}</td><td class="${c.saldo_compensado < 0 ? "negativo" : ""}">${formatarValor(c.saldo_compensado)}</td></tr>`;
     })
     .join("");
+}
 
-  const categorias = plano.grupos.flatMap((g) => g.categorias.map((c) => [c.nome, c.nome]));
-  preencher($("lancar-conta"), contas.map((c) => [c.nome, c.nome]));
-  preencher($("lancar-categoria"), [["", "Sem categoria"], ["A atribuir", "A atribuir"], ...categorias]);
-  preencher($("atribuir-categoria"), categorias);
+function render() {
+  const plano = JSON.parse(t.plano($("mes").value));
+  contasAtuais = JSON.parse(t.contas());
+  renderPlano(plano);
+  renderContas(contasAtuais);
   preencher($("categoria-grupo"), plano.grupos.map((g) => [g.nome, g.nome]));
 }
 
-/** Depois de cada mudança: grava a cópia (se der) e mostra o que o núcleo calcula. */
+/** Depois de cada mudança: grava a cópia (se der) e redesenha a tela. */
 async function aposMudanca() {
   if (guardando) {
     try {
@@ -139,6 +190,216 @@ async function aposMudanca() {
   }
   render();
 }
+
+// ---------- Folhas: atribuir e lançar ----------
+
+/** Centavos digitados no teclado: o último dígito entra à direita, como numa calculadora. */
+function aplicarTecla(centavos, tecla) {
+  if (tecla === "⌫") return Math.floor(centavos / 10);
+  const novo = centavos * (tecla === "00" ? 100 : 10) + (tecla === "00" ? 0 : Number(tecla));
+  return novo < 1e9 ? novo : centavos;
+}
+
+/** Centavos em texto para o núcleo: `80,50`. */
+const textoDosCentavos = (centavos) => (centavos / 100).toFixed(2).replace(".", ",");
+
+const teclado = () =>
+  `<div class="teclado">${[1, 2, 3, 4, 5, 6, 7, 8, 9, "00", 0, "⌫"].map((n) => `<button type="button" data-tecla="${n}">${n}</button>`).join("")}</div>`;
+
+function abrirFolha(html) {
+  const raiz = $("folha-raiz");
+  raiz.innerHTML = `<div class="scrim" data-fechar></div><div class="folha" role="dialog" aria-modal="true">${html}</div>`;
+  raiz.hidden = false;
+  return raiz;
+}
+
+function fecharFolha() {
+  const raiz = $("folha-raiz");
+  raiz.innerHTML = "";
+  raiz.hidden = true;
+}
+
+/** Mostra o erro do núcleo dentro da folha aberta. */
+function erroNaFolha(e) {
+  const alvo = $("folha-raiz").querySelector("[data-erro]");
+  if (alvo) alvo.textContent = String(e);
+}
+
+/**
+ * Folha de atribuir: "Atribuir" define o total da categoria no mês; "Mover de
+ * outra" tira um valor de outra categoria (ou do A atribuir); "Cobrir estouro"
+ * move exatamente o que estourou.
+ */
+function abrirAtribuir(nome, modoInicial = "atribuir") {
+  const l = categoriaPorNome(nome);
+  if (!l) return;
+  const mes = $("mes").value;
+  let modo = modoInicial;
+  let origem = "A atribuir";
+  let centavos = Math.round(Math.max(l.atribuido, 0) / 10);
+  if (modo === "cobrir") centavos = Math.round(-l.disponivel / 10);
+
+  const desenhar = () => {
+    const aAtribuir = planoAtual.a_atribuir ?? 0;
+    const opcoes = [`<option value="A atribuir" ${origem === "A atribuir" ? "selected" : ""}>A atribuir (R$ ${formatarValor(aAtribuir)})</option>`]
+      .concat(todasCategorias().filter((c) => c.nome !== nome && !c.pagamento).map((c) => `<option value="${esc(c.nome)}" ${origem === c.nome ? "selected" : ""}>${esc(c.nome)} (${formatarValor(c.disponivel)})</option>`))
+      .join("");
+    const podeCobrir = l.disponivel < 0;
+    const raiz = abrirFolha(`
+      <h3>${esc(nome)}</h3>
+      <div class="linha-info"><span>Atribuído</span><span class="num">${formatarValor(l.atribuido)}</span></div>
+      <div class="linha-info"><span>Atividade</span><span class="num">${formatarValor(l.atividade)}</span></div>
+      <div class="linha-info"><span>Disponível</span><span class="pilula ${pilula(l)} num">${formatarValor(l.disponivel)}</span></div>
+      ${l.estouro ? `<p class="suave" style="margin: 0">${esc(notaDaLinha(l))}</p>` : ""}
+      <div class="segmentos" role="group" aria-label="Como mexer no dinheiro">
+        <button type="button" data-modo="atribuir" class="${modo === "atribuir" ? "ligado" : ""}">Atribuir</button>
+        <button type="button" data-modo="mover" class="${modo === "mover" ? "ligado" : ""}">Mover de outra</button>
+        <button type="button" data-modo="cobrir" class="${modo === "cobrir" ? "ligado" : ""}" ${podeCobrir ? "" : "disabled"}>Cobrir estouro</button>
+      </div>
+      ${modo === "atribuir" ? "" : `<label>Tirar de <select data-origem>${opcoes}</select></label>`}
+      <div class="visor" aria-live="polite">R$ ${formatarValor(centavos * 10)}</div>
+      ${teclado()}
+      <p class="aviso" data-erro></p>
+      <div class="acoes">
+        <button type="button" data-cancelar>Cancelar</button>
+        <button type="button" class="principal" data-confirmar>${modo === "atribuir" ? "Atribuir" : modo === "mover" ? "Mover" : "Cobrir"}</button>
+      </div>`);
+
+    raiz.onclick = async (e) => {
+      const b = e.target.closest("button");
+      if (e.target.dataset.fechar !== undefined || (b && b.dataset.cancelar !== undefined)) return fecharFolha();
+      if (!b) return;
+      if (b.dataset.modo) {
+        modo = b.dataset.modo;
+        centavos = modo === "cobrir" ? Math.round(-l.disponivel / 10) : modo === "atribuir" ? Math.round(Math.max(l.atribuido, 0) / 10) : 0;
+        return desenhar();
+      }
+      if (b.dataset.tecla) {
+        centavos = aplicarTecla(centavos, b.dataset.tecla);
+        return desenhar();
+      }
+      if (b.dataset.confirmar !== undefined) {
+        const texto = textoDosCentavos(centavos);
+        if (modo !== "atribuir" && centavos === 0) return erroNaFolha("Digite o valor.");
+        try {
+          if (modo === "atribuir") t.atribuir(nome, texto, mes);
+          else t.movimentar(origem, nome, mes, texto);
+        } catch (err) {
+          return erroNaFolha(err);
+        }
+        fecharFolha();
+        $("erro").textContent = "";
+        await aposMudanca();
+      }
+    };
+    raiz.onchange = (e) => {
+      if (e.target.dataset.origem !== undefined) {
+        origem = e.target.value;
+        desenhar();
+      }
+    };
+  };
+  desenhar();
+}
+
+/**
+ * Folha de lançar: saída (numa conta, com categoria ou sem), entrada (vai para
+ * "A atribuir") e transferência (inclusive pagar a fatura, que é uma transferência
+ * para a conta do cartão).
+ */
+function abrirLancar() {
+  if (!contasAtuais.length) {
+    $("erro").textContent = "Crie uma conta antes de lançar.";
+    return;
+  }
+  const s = {
+    tipo: "saida",
+    conta: contasAtuais[0].nome,
+    destino: contasAtuais[1]?.nome ?? "",
+    categoria: "",
+    data: $("mes").value.startsWith(mesAtual()) ? hojeIso() : `${$("mes").value}-01`,
+    centavos: 0,
+  };
+  const ePagamentoDeCartao = (nome) => todasCategorias().some((c) => c.pagamento && c.nome === nome);
+
+  const desenhar = () => {
+    const contasOpcoes = contasAtuais.map((c) => `<option value="${esc(c.nome)}" ${c.nome === s.conta ? "selected" : ""}>${esc(c.nome)}</option>`).join("");
+    let campo;
+    if (s.tipo === "saida") {
+      const grupos = planoAtual.grupos
+        .map((g) => {
+          const cats = g.categorias.filter((c) => !c.pagamento).map((c) => `<option value="${esc(c.nome)}" ${c.nome === s.categoria ? "selected" : ""}>${esc(c.nome)}</option>`).join("");
+          return cats ? `<optgroup label="${esc(g.nome)}">${cats}</optgroup>` : "";
+        })
+        .join("");
+      campo = `<label>Categoria <select data-categoria><option value="">Sem categoria</option>${grupos}</select></label>`;
+    } else if (s.tipo === "entrada") {
+      campo = `<p class="suave" style="margin: 0">A entrada vai para <b>A atribuir</b> deste mês.</p>`;
+    } else {
+      const destinos = contasAtuais
+        .filter((c) => c.nome !== s.conta)
+        .map((c) => `<option value="${esc(c.nome)}" ${c.nome === s.destino ? "selected" : ""}>${esc(c.nome)}${ePagamentoDeCartao(c.nome) ? " (pagar fatura)" : ""}</option>`)
+        .join("");
+      campo = `<label>Para <select data-destino>${destinos}</select></label>`;
+    }
+    const raiz = abrirFolha(`
+      <h3>Lançar</h3>
+      <div class="segmentos" role="group" aria-label="Tipo de lançamento">
+        ${[["saida", "Saída"], ["entrada", "Entrada"], ["transferencia", "Transferência"]]
+          .map(([v, rotulo]) => `<button type="button" data-tipo="${v}" class="${s.tipo === v ? "ligado" : ""}">${rotulo}</button>`)
+          .join("")}
+      </div>
+      <label>${s.tipo === "transferencia" ? "De" : "Conta"} <select data-conta>${contasOpcoes}</select></label>
+      ${campo}
+      <label>Data <input type="date" data-data value="${esc(s.data)}"></label>
+      <div class="visor" aria-live="polite">R$ ${formatarValor(s.centavos * 10)}</div>
+      ${teclado()}
+      <p class="aviso" data-erro></p>
+      <div class="acoes">
+        <button type="button" data-cancelar>Cancelar</button>
+        <button type="button" class="principal" data-confirmar>Lançar</button>
+      </div>`);
+
+    raiz.onclick = async (e) => {
+      const b = e.target.closest("button");
+      if (e.target.dataset.fechar !== undefined || (b && b.dataset.cancelar !== undefined)) return fecharFolha();
+      if (!b) return;
+      if (b.dataset.tipo) {
+        s.tipo = b.dataset.tipo;
+        return desenhar();
+      }
+      if (b.dataset.tecla) {
+        s.centavos = aplicarTecla(s.centavos, b.dataset.tecla);
+        return desenhar();
+      }
+      if (b.dataset.confirmar !== undefined) {
+        const texto = textoDosCentavos(s.centavos);
+        if (s.centavos === 0) return erroNaFolha("Digite o valor.");
+        try {
+          if (s.tipo === "saida") t.lancar(s.conta, `-${texto}`, s.data, s.categoria || null, null);
+          else if (s.tipo === "entrada") t.lancar(s.conta, texto, s.data, "A atribuir", null);
+          else t.lancar(s.conta, `-${texto}`, s.data, null, s.destino);
+        } catch (err) {
+          return erroNaFolha(err);
+        }
+        fecharFolha();
+        $("erro").textContent = "";
+        await aposMudanca();
+      }
+    };
+    raiz.onchange = (e) => {
+      const d = e.target.dataset;
+      if (d.conta !== undefined) s.conta = e.target.value;
+      if (d.categoria !== undefined) s.categoria = e.target.value;
+      if (d.destino !== undefined) s.destino = e.target.value;
+      if (d.data !== undefined) s.data = e.target.value;
+      desenhar();
+    };
+  };
+  desenhar();
+}
+
+// ---------- Formulários de contas, grupos e categorias ----------
 
 /** Roda uma ação do usuário; mostra o erro do núcleo, se houver. */
 function acao(fn) {
@@ -153,86 +414,7 @@ function acao(fn) {
     $("erro").textContent = "";
     await aposMudanca();
     evento.target.reset();
-    $("lancar-data").value = hojeIso();
   };
-}
-
-function mostrarIds() {
-  $("orcamento-id").textContent = t.orcamento();
-  $("aparelho-id").textContent = t.id();
-}
-
-/**
- * Sincroniza com o servidor. O token vem do campo e vale só para esta chamada:
- * não é gravado no aparelho nem na cópia. Depois, a cópia nova é guardada.
- */
-async function sincronizarAgora(evento) {
-  evento.preventDefault();
-  const servidor = $("servidor").value.trim();
-  const token = $("token").value;
-  if (!servidor || !token) {
-    $("sincronizacao").textContent = "Informe o servidor e o token.";
-    return;
-  }
-  if (!navigator.onLine) {
-    $("token").value = "";
-    $("sincronizacao").textContent = "Sem rede: o orçamento continua guardado neste aparelho. Sincronize quando a conexão voltar.";
-    return;
-  }
-  $("sincronizar").disabled = true;
-  $("sincronizacao").textContent = "Sincronizando…";
-  let sucesso = false;
-  try {
-    await t.sincronizar(servidor, token);
-    sucesso = true;
-    $("sincronizacao").textContent = `Sincronizado com ${servidor}.`;
-  } catch (e) {
-    // Falha de rede (servidor fora do ar, endereço errado, rede sem internet).
-    // O núcleo diz o tipo do erro; a mensagem só entra no aviso de outros casos.
-    const texto = e?.mensagem ?? String(e);
-    $("sincronizacao").textContent = e?.tipo === "rede"
-      ? `Não deu para falar com ${servidor}. Confira a conexão e o endereço; o orçamento continua guardado neste aparelho.`
-      : `Não deu para sincronizar: ${texto}`;
-  } finally {
-    $("token").value = "";
-    $("sincronizar").disabled = false;
-  }
-  $("erro").textContent = "";
-  // Como o CLI: a cópia só é gravada depois de uma sincronização que deu certo.
-  if (sucesso && guardando) {
-    try {
-      await gravarCopia(t.paraJson());
-    } catch (e) {
-      $("erro").textContent = `Não deu para guardar no navegador (${e}). A sincronização só existe nesta aba.`;
-    }
-  }
-  render();
-}
-
-/** Troca a cópia deste aparelho pela de outro orçamento que já está no servidor. */
-async function entrarNoOrcamento(evento) {
-  evento.preventDefault();
-  const id = $("entrar-id").value.trim();
-  if (!id) return;
-  try {
-    const pendentes = t.mudancasPendentes();
-    if (pendentes > 0 && !confirm(`Há ${pendentes} mudança(s) não enviada(s) neste aparelho. Entrar em outro orçamento as descarta. Continuar?`)) {
-      return;
-    }
-    const nova = Tostao.paraOrcamento(id);
-    // O handle antigo é liberado antes de trocar; o wasm não o libera sozinho.
-    t.free();
-    t = nova;
-    if (guardando) await gravarCopia(t.paraJson());
-  } catch (e) {
-    $("erro").textContent = `Não deu para entrar nesse orçamento (${e}).`;
-    return;
-  }
-  $("erro").textContent = "";
-  $("sincronizacao").textContent = "Entrou no orçamento. Sincronize para trazer os dados.";
-  $("entrar-id").value = "";
-  mostrarIds();
-  render();
 }
 
 /** Casca offline: o service worker guarda a página para abrir sem rede. */
@@ -259,10 +441,14 @@ async function principal() {
   }
 
   $("mes").value = mesAtual();
-  $("lancar-data").value = hojeIso();
-  mostrarIds();
-  $("form-sincronizar").addEventListener("submit", sincronizarAgora);
-  $("form-entrar").addEventListener("submit", entrarNoOrcamento);
+  $("mes-antes").addEventListener("click", () => {
+    $("mes").value = somarMes($("mes").value, -1);
+    render();
+  });
+  $("mes-depois").addEventListener("click", () => {
+    $("mes").value = somarMes($("mes").value, 1);
+    render();
+  });
   $("mes").addEventListener("change", () => {
     try {
       render();
@@ -270,6 +456,12 @@ async function principal() {
       $("erro").textContent = String(e);
     }
   });
+
+  $("plano").addEventListener("click", (e) => {
+    const botao = e.target.closest("[data-categoria]");
+    if (botao) abrirAtribuir(botao.dataset.categoria);
+  });
+  $("lancar-abrir").addEventListener("click", abrirLancar);
 
   $("form-conta").addEventListener(
     "submit",
@@ -279,23 +471,6 @@ async function principal() {
   $("form-categoria").addEventListener(
     "submit",
     acao(() => t.criarCategoria($("categoria-nome").value.trim(), $("categoria-grupo").value))
-  );
-  $("form-atribuir").addEventListener(
-    "submit",
-    acao(() => t.atribuir($("atribuir-categoria").value, $("atribuir-valor").value, $("mes").value))
-  );
-  $("form-lancar").addEventListener(
-    "submit",
-    acao(() => {
-      const categoria = $("lancar-categoria").value;
-      t.lancar(
-        $("lancar-conta").value,
-        $("lancar-valor").value,
-        $("lancar-data").value,
-        categoria === "" ? null : categoria,
-        null
-      );
-    })
   );
 
   render();

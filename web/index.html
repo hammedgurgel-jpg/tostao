@@ -9,71 +9,134 @@
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <style>
-    :root { --fundo: #f7f7f5; --texto: #1d1d1b; --suave: #6b6b66; --linha: #e2e2dd; --cartao: #ffffff; --negativo: #b3261e; --destaque: #1f6f5b; }
-    @media (prefers-color-scheme: dark) {
-      :root:not([data-theme="light"]) { --fundo: #161614; --texto: #ecebe6; --suave: #9c9b94; --linha: #2e2e2a; --cartao: #1f1f1c; --negativo: #ff8a80; --destaque: #6fd0b5; }
+    :root {
+      --fundo: #f7f7f5; --texto: #1d1d1b; --suave: #6b6b66; --linha: #e2e2dd; --cartao: #ffffff;
+      --destaque: #1f6f5b; --destaque-texto: #ffffff;
+      --positivo: #2f7d4f; --positivo-fundo: #dcefe2;
+      --negativo: #b3261e; --negativo-fundo: #f8dcd9;
+      --aviso-cor: #8a6100; --aviso-fundo: #fbecc4;
     }
-    :root[data-theme="dark"] { --fundo: #161614; --texto: #ecebe6; --suave: #9c9b94; --linha: #2e2e2a; --cartao: #1f1f1c; --negativo: #ff8a80; --destaque: #6fd0b5; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --fundo: #161614; --texto: #ecebe6; --suave: #9c9b94; --linha: #2e2e2a; --cartao: #1f1f1c;
+        --destaque: #6fd0b5; --destaque-texto: #10172b;
+        --positivo: #7fd09c; --positivo-fundo: #1d3626;
+        --negativo: #ff8a80; --negativo-fundo: #43201d;
+        --aviso-cor: #f2c45a; --aviso-fundo: #3d3015;
+      }
+    }
+    :root[data-theme="dark"] {
+      --fundo: #161614; --texto: #ecebe6; --suave: #9c9b94; --linha: #2e2e2a; --cartao: #1f1f1c;
+      --destaque: #6fd0b5; --destaque-texto: #10172b;
+      --positivo: #7fd09c; --positivo-fundo: #1d3626;
+      --negativo: #ff8a80; --negativo-fundo: #43201d;
+      --aviso-cor: #f2c45a; --aviso-fundo: #3d3015;
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; padding: 16px; background: var(--fundo); color: var(--texto); font: 16px/1.4 system-ui, sans-serif; }
-    main { max-width: 640px; margin: 0 auto; display: grid; gap: 16px; }
-    h1 { font-size: 22px; margin: 0; }
-    h2 { font-size: 16px; margin: 0 0 8px; color: var(--suave); font-weight: 600; }
+    html, body { margin: 0; background: var(--fundo); color: var(--texto); }
+    body { font: 16px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding-bottom: 96px; overflow-x: hidden; }
+    button, input, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    h1 { font-size: 20px; margin: 0; }
+    h2 { font-size: 15px; margin: 0 0 8px; color: var(--suave); font-weight: 600; }
     section { background: var(--cartao); border: 1px solid var(--linha); border-radius: 12px; padding: 14px; }
-    form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
-    label { display: grid; gap: 4px; font-size: 13px; color: var(--suave); flex: 1 1 140px; }
-    input, select, button { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--linha); background: var(--fundo); color: var(--texto); min-width: 0; }
-    button { background: var(--destaque); color: #fff; border: none; cursor: pointer; flex: 0 0 auto; }
+    label { display: grid; gap: 4px; font-size: 13px; color: var(--suave); }
+    input, select { padding: 9px 10px; border-radius: 8px; border: 1px solid var(--linha); background: var(--fundo); color: var(--texto); min-width: 0; width: 100%; }
+    .num { font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+    .negativo { color: var(--negativo); }
+    .suave { color: var(--suave); font-size: 14px; margin: 4px 0 0; }
+    .aviso { color: var(--negativo); min-height: 1.2em; font-size: 14px; margin: 0; }
+
+    /* Cabeçalho fixo: mês e faixa do A atribuir. */
+    .fixo { position: sticky; top: 0; z-index: 5; background: var(--fundo); padding: 12px 16px 8px; }
+    .topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; max-width: 640px; margin: 0 auto; }
+    .aviso:empty { display: none; }
+    .mes { display: flex; align-items: center; gap: 4px; }
+    .mes button, .mes input { width: auto; }
+    .mes button { background: none; border: 1px solid var(--linha); border-radius: 8px; padding: 6px 10px; }
+    .mes input { padding: 6px 8px; width: 11em; }
+    .faixa { max-width: 640px; margin: 8px auto 0; border-radius: 12px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .faixa.positivo { background: var(--positivo-fundo); color: var(--positivo); }
+    .faixa.negativo { background: var(--negativo-fundo); color: var(--negativo); }
+    .faixa.zero { background: var(--linha); color: var(--suave); }
+    .faixa .valor { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .faixa .rotulo { font-size: 13px; }
+
+    main { max-width: 640px; margin: 0 auto; padding: 8px 16px 0; display: grid; gap: 16px; }
+    .cabeca-colunas, .grupo-cabeca, .linha { display: grid; grid-template-columns: minmax(0, 1fr) 84px 96px; align-items: center; gap: 6px; }
+    .cabeca-colunas { font-size: 12px; color: var(--suave); text-transform: uppercase; padding: 0 2px 6px; }
+    .cabeca-colunas span:not(:first-child), .grupo-cabeca span:not(:first-child) { text-align: right; }
+    .grupo { padding: 0; overflow: hidden; }
+    .grupo-cabeca { background: var(--fundo); padding: 8px 14px; font-weight: 600; font-size: 14px; }
+    .linha { width: 100%; background: none; border: none; border-top: 1px solid var(--linha); padding: 10px 14px; text-align: left; border-radius: 0; }
+    .linha:active { background: var(--fundo); }
+    .linha .nome { min-width: 0; overflow-wrap: anywhere; }
+    .linha .nota { display: block; font-size: 12px; color: var(--suave); margin-top: 2px; }
+    .pilula { display: inline-block; padding: 2px 8px; border-radius: 999px; font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums; }
+    .pilula.positivo { background: var(--positivo-fundo); color: var(--positivo); }
+    .pilula.negativo { background: var(--negativo-fundo); color: var(--negativo); }
+    .pilula.aviso { background: var(--aviso-fundo); color: var(--aviso-cor); }
+    .pilula.zero { background: var(--linha); color: var(--suave); }
+
+    /* Botão "+": lançar. */
+    .lancar { position: fixed; right: 16px; bottom: 20px; width: 60px; height: 60px; border-radius: 50%; border: none; background: var(--destaque); color: var(--destaque-texto); font-size: 32px; line-height: 1; box-shadow: 0 4px 14px rgba(0, 0, 0, .25); z-index: 6; }
+
+    /* Folhas: atribuir e lançar. */
+    #folha-raiz[hidden] { display: none; }
+    .scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, .4); z-index: 10; }
+    .folha { position: fixed; left: 0; right: 0; bottom: 0; max-width: 640px; margin: 0 auto; max-height: 92vh; overflow-y: auto; background: var(--cartao); color: var(--texto); border-radius: 16px 16px 0 0; padding: 16px; z-index: 11; display: grid; gap: 12px; }
+    .folha h3 { margin: 0; font-size: 18px; }
+    .folha .linha-info { display: flex; justify-content: space-between; align-items: center; font-size: 15px; }
+    .segmentos { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0; border: 1px solid var(--linha); border-radius: 10px; overflow: hidden; }
+    .segmentos button { background: none; border: none; padding: 9px 4px; font-size: 14px; }
+    .segmentos button.ligado { background: var(--destaque); color: var(--destaque-texto); font-weight: 600; }
+    .segmentos button:disabled { color: var(--suave); opacity: .5; cursor: default; }
+    .visor { font-size: 34px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; padding: 4px 4px; }
+    .teclado { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .teclado button { background: var(--fundo); border: 1px solid var(--linha); border-radius: 10px; padding: 14px 0; font-size: 22px; }
+    .acoes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .acoes button { border: none; border-radius: 10px; padding: 13px 0; font-size: 16px; font-weight: 600; background: var(--linha); color: var(--texto); }
+    .acoes button.principal { background: var(--destaque); color: var(--destaque-texto); }
+
+    /* Formulários de contas, grupos e categorias (saem para a tela nova no #18). */
+    form { display: grid; gap: 8px; }
+    @media (min-width: 560px) { form { grid-template-columns: 1fr 1fr auto; align-items: end; } }
+    button.enviar { background: var(--destaque); color: var(--destaque-texto); border: none; border-radius: 8px; padding: 10px 14px; font-weight: 600; }
     table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-    th, td { text-align: right; padding: 6px 4px; border-bottom: 1px solid var(--linha); }
+    th, td { text-align: right; padding: 6px 4px; border-bottom: 1px solid var(--linha); font-size: 15px; }
     th:first-child, td:first-child { text-align: left; }
     th { font-size: 12px; color: var(--suave); font-weight: 500; }
-    .grupo td { font-weight: 600; text-align: left; padding-top: 12px; border-bottom: none; }
-    .negativo { color: var(--negativo); }
-    .aviso { color: var(--negativo); min-height: 1.4em; font-size: 14px; }
-    .cabecalho { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }
-    .suave { color: var(--suave); font-size: 14px; }
   </style>
 </head>
 <body>
-<main>
-  <div class="cabecalho">
-    <h1 id="titulo">Tostão</h1>
-    <label style="flex: 0 0 auto">Mês <input id="mes" type="month"></label>
+<div class="fixo">
+  <div class="topo">
+    <h1>Orçamento</h1>
+    <div class="mes">
+      <button type="button" id="mes-antes" aria-label="Mês anterior">‹</button>
+      <input id="mes" type="month" aria-label="Mês do orçamento">
+      <button type="button" id="mes-depois" aria-label="Mês seguinte">›</button>
+    </div>
   </div>
+  <div id="faixa" class="faixa zero">
+    <div>
+      <div class="rotulo">A atribuir</div>
+      <div id="faixa-nota" class="rotulo"></div>
+    </div>
+    <div id="a-atribuir" class="valor">—</div>
+  </div>
+</div>
+
+<main>
   <div id="armazenamento" class="aviso" role="status"></div>
   <div id="erro" class="aviso" role="alert"></div>
-  <p class="suave" id="pendentes"></p>
 
-  <section>
-    <h2>Sincronizar com o servidor</h2>
-    <form id="form-sincronizar">
-      <label>Servidor <input id="servidor" type="url" value="http://127.0.0.1:8080" required></label>
-      <label>Token <input id="token" type="password" autocomplete="off" required></label>
-      <button type="submit" id="sincronizar">Sincronizar</button>
-    </form>
-    <p class="suave" id="sincronizacao" role="status"></p>
-    <p class="suave">Id do orçamento: <span id="orcamento-id">—</span></p>
-    <p class="suave">Id deste aparelho: <span id="aparelho-id">—</span></p>
-    <p class="suave">O token não é guardado no navegador: digite-o a cada sincronização.</p>
-  </section>
-
-  <section>
-    <h2>Entrar num orçamento que já está no servidor</h2>
-    <form id="form-entrar">
-      <label>Id do orçamento <input id="entrar-id" required></label>
-      <button type="submit">Entrar</button>
-    </form>
-    <p class="suave">Este aparelho passa a usar esse orçamento. A primeira sincronização traz tudo.</p>
-  </section>
-
-  <section>
-    <h2>A atribuir e plano do mês</h2>
-    <p class="suave" id="a-atribuir"></p>
-    <table>
-      <thead><tr><th>Categoria</th><th>Atribuído</th><th>Atividade</th><th>Disponível</th></tr></thead>
-      <tbody id="plano"></tbody>
-    </table>
+  <section aria-labelledby="titulo-plano" style="padding: 12px 0 0">
+    <h2 id="titulo-plano" style="padding: 0 14px">Plano do mês</h2>
+    <div class="cabeca-colunas" style="padding: 0 14px 6px">
+      <span>Categoria</span><span>Atribuído</span><span>Disponível</span>
+    </div>
+    <div id="plano"></div>
   </section>
 
   <section>
@@ -85,29 +148,9 @@
   </section>
 
   <section>
-    <h2>Lançar transação</h2>
-    <form id="form-lancar">
-      <label>Conta <select id="lancar-conta" required></select></label>
-      <label>Valor (use - para saída) <input id="lancar-valor" inputmode="decimal" placeholder="-80" required></label>
-      <label>Categoria <select id="lancar-categoria"></select></label>
-      <label>Data <input id="lancar-data" type="date" required></label>
-      <button type="submit">Lançar</button>
-    </form>
-  </section>
-
-  <section>
-    <h2>Atribuir a uma categoria</h2>
-    <form id="form-atribuir">
-      <label>Categoria <select id="atribuir-categoria" required></select></label>
-      <label>Valor <input id="atribuir-valor" inputmode="decimal" placeholder="50" required></label>
-      <button type="submit">Atribuir</button>
-    </form>
-  </section>
-
-  <section>
-    <h2>Nova conta</h2>
+    <h2>Contas, grupos e categorias</h2>
     <form id="form-conta">
-      <label>Nome <input id="conta-nome" required></label>
+      <label>Nome da conta <input id="conta-nome" required></label>
       <label>Tipo
         <select id="conta-tipo">
           <option value="corrente">Corrente</option>
@@ -117,27 +160,22 @@
           <option value="acompanhamento">Acompanhamento</option>
         </select>
       </label>
-      <button type="submit">Criar conta</button>
+      <button type="submit" class="enviar">Criar conta</button>
     </form>
-  </section>
-
-  <section>
-    <h2>Novo grupo</h2>
-    <form id="form-grupo">
-      <label>Nome <input id="grupo-nome" placeholder="Contas fixas" required></label>
-      <button type="submit">Criar grupo</button>
+    <form id="form-grupo" style="margin-top: 14px">
+      <label>Nome do grupo <input id="grupo-nome" placeholder="Contas fixas" required></label>
+      <button type="submit" class="enviar">Criar grupo</button>
     </form>
-  </section>
-
-  <section>
-    <h2>Nova categoria</h2>
-    <form id="form-categoria">
+    <form id="form-categoria" style="margin-top: 14px">
       <label>Grupo <select id="categoria-grupo" required></select></label>
-      <label>Nome <input id="categoria-nome" placeholder="Mercado" required></label>
-      <button type="submit">Criar categoria</button>
+      <label>Nome da categoria <input id="categoria-nome" placeholder="Mercado" required></label>
+      <button type="submit" class="enviar">Criar categoria</button>
     </form>
   </section>
 </main>
+
+<button type="button" id="lancar-abrir" class="lancar" aria-label="Lançar transação">+</button>
+<div id="folha-raiz" hidden></div>
 
 <script type="module" src="app.js"></script>
 </body>
