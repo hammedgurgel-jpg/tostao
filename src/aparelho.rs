@@ -33,6 +33,7 @@ use serde_json::{json, Map, Value};
 use crate::api::{ApiError, ApiV1, ServerError, Transport};
 use crate::dates::{add_months, start_of_month, Date};
 use crate::knowledge::BudgetKnowledge;
+use crate::calc::SubCategoryMonthCalc;
 use crate::motor::protocolo::{orcamento_das_entidades, CATEGORIA_RECEITA};
 use crate::motor::{self, Calculos};
 use crate::protocol::{
@@ -257,6 +258,15 @@ impl BudgetHost for CopiaLocal {
     }
 }
 
+/// Como a categoria estourou no mês (só quando o disponível é negativo).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Estouro {
+    /// Parte paga com dinheiro (vermelho na tela).
+    Dinheiro,
+    /// Parte paga no cartão, sem dinheiro reservado (amarelo na tela).
+    Credito,
+}
+
 /// Uma linha do plano do mês.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinhaDoPlano {
@@ -266,6 +276,13 @@ pub struct LinhaDoPlano {
     /// passou para ela.
     pub atividade: i64,
     pub disponivel: i64,
+    /// Tipo do estouro, quando o disponível é negativo.
+    pub estouro: Option<Estouro>,
+    /// Categoria de pagamento do cartão: quanto da fatura não tem dinheiro
+    /// reservado (0 quando a fatura está coberta).
+    pub falta: i64,
+    /// `true` na categoria de pagamento do cartão.
+    pub pagamento: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -478,15 +495,49 @@ impl Aparelho {
         if categoria == CATEGORIA_A_ATRIBUIR {
             return Err(Erro::Nome(format!("não se atribui a \"{NOME_A_ATRIBUIR}\"")));
         }
+        self.gravar_atribuicao(&categoria, start_of_month(mes), valor);
+        Ok(())
+    }
+
+    /// Tira `valor` da categoria de origem e põe no destino, no mês. Com
+    /// "A atribuir" na origem, é só atribuir ao destino. Usada por "mover de
+    /// outra" e por "cobrir estouro" (que move exatamente o estouro).
+    pub fn movimentar(&mut self, origem: &str, destino: &str, mes: Date, valor: i64) -> Result<(), Erro> {
+        let origem = self.por_nome("be_subcategories", "name", origem, "categoria")?;
+        let destino = self.por_nome("be_subcategories", "name", destino, "categoria")?;
+        if destino == CATEGORIA_A_ATRIBUIR {
+            return Err(Erro::Nome(format!("não se atribui a \"{NOME_A_ATRIBUIR}\"")));
+        }
+        if origem == destino {
+            return Err(Erro::Nome("a origem e o destino são a mesma categoria".into()));
+        }
         let mes = start_of_month(mes);
+        let do_destino = self.atribuido_em(&destino, mes);
+        if origem != CATEGORIA_A_ATRIBUIR {
+            let da_origem = self.atribuido_em(&origem, mes);
+            self.gravar_atribuicao(&origem, mes, da_origem - valor);
+        }
+        self.gravar_atribuicao(&destino, mes, do_destino + valor);
+        Ok(())
+    }
+
+    fn gravar_atribuicao(&mut self, categoria: &str, mes: Date, valor: i64) {
         self.mudar(
             "be_monthly_subcategory_budgets",
             json!({
-                "id": format!("msb/{}/{categoria}", mes.format("%Y-%m")), "entities_subcategory_id": categoria,
+                "id": id_da_atribuicao(categoria, mes), "entities_subcategory_id": categoria,
                 "month": mes.to_string(), "budgeted": valor, "is_tombstone": false
             }),
         );
-        Ok(())
+    }
+
+    /// O atribuído da categoria no mês (0 quando não há atribuição).
+    fn atribuido_em(&self, categoria: &str, mes: Date) -> i64 {
+        let id = id_da_atribuicao(categoria, mes);
+        self.vivas("be_monthly_subcategory_budgets")
+            .find(|v| v["id"].as_str() == Some(id.as_str()))
+            .and_then(|v| v["budgeted"].as_i64())
+            .unwrap_or(0)
     }
 
     /// Lança uma transação na conta. Numa transferência, `valor` é o da
@@ -581,7 +632,15 @@ impl Aparelho {
             .map(|m| {
                 let s = &m.sem_categoria;
                 let atividade = s.cash_outflows.unwrap_or(0) + s.credit_outflows.unwrap_or(0);
-                LinhaDoPlano { nome: "Sem categoria".into(), atribuido: 0, atividade, disponivel: s.balance.unwrap_or(0) }
+                LinhaDoPlano {
+                    nome: "Sem categoria".into(),
+                    atribuido: 0,
+                    atividade,
+                    disponivel: s.balance.unwrap_or(0),
+                    estouro: None,
+                    falta: 0,
+                    pagamento: false,
+                }
             })
             .filter(|l| l.atividade != 0 || l.disponivel != 0);
 
@@ -597,15 +656,31 @@ impl Aparelho {
                     .into_iter()
                     .map(|c| {
                         let nome = c["name"].as_str().unwrap_or_default().to_owned();
+                        let conta_do_cartao = c.get("entities_account_id").and_then(Value::as_str);
+                        let pagamento = conta_do_cartao.is_some();
                         match do_mes.and_then(|m| m.categoria(c["id"].as_str().unwrap_or_default())) {
-                            Some(calc) => LinhaDoPlano {
+                            Some(calc) => {
+                                let disponivel = calc.balance.unwrap_or(0);
+                                LinhaDoPlano {
+                                    nome,
+                                    atribuido: calc.budgeted,
+                                    atividade: calc.cash_outflows.unwrap_or(0) + calc.credit_outflows.unwrap_or(0)
+                                        - calc.budgeted_spending,
+                                    disponivel,
+                                    estouro: if pagamento { None } else { estouro_de(calc, disponivel) },
+                                    falta: conta_do_cartao.map_or(0, |conta| falta_da_fatura(&calculos, conta, disponivel)),
+                                    pagamento,
+                                }
+                            }
+                            None => LinhaDoPlano {
                                 nome,
-                                atribuido: calc.budgeted,
-                                atividade: calc.cash_outflows.unwrap_or(0) + calc.credit_outflows.unwrap_or(0)
-                                    - calc.budgeted_spending,
-                                disponivel: calc.balance.unwrap_or(0),
+                                atribuido: 0,
+                                atividade: 0,
+                                disponivel: 0,
+                                estouro: None,
+                                falta: conta_do_cartao.map_or(0, |conta| falta_da_fatura(&calculos, conta, 0)),
+                                pagamento,
                             },
-                            None => LinhaDoPlano { nome, atribuido: 0, atividade: 0, disponivel: 0 },
                         }
                     })
                     .collect();
@@ -689,6 +764,32 @@ fn caminho_livre(caminho: &Path) -> Result<PathBuf, Erro> {
         return Err(Erro::Arquivo(format!("o arquivo {} já existe", caminho.display())));
     }
     Ok(caminho.to_owned())
+}
+
+/// Id da atribuição de uma categoria num mês (o mesmo em todos os aparelhos).
+fn id_da_atribuicao(categoria: &str, mes: Date) -> String {
+    format!("msb/{}/{categoria}", mes.format("%Y-%m"))
+}
+
+/// Tipo do estouro de uma categoria: dinheiro antes de crédito, como a tela
+/// mostra. Só quando o disponível é negativo.
+fn estouro_de(calc: &SubCategoryMonthCalc, disponivel: i64) -> Option<Estouro> {
+    if disponivel >= 0 {
+        None
+    } else if calc.unbudgeted_cash_outflows < 0 {
+        Some(Estouro::Dinheiro)
+    } else if calc.unbudgeted_credit_outflows < 0 {
+        Some(Estouro::Credito)
+    } else {
+        None
+    }
+}
+
+/// Falta da fatura: a dívida do cartão (saldo negativo da conta) menos o
+/// disponível da categoria de pagamento, sem passar de zero.
+fn falta_da_fatura(calculos: &Calculos, conta: &str, disponivel: i64) -> i64 {
+    let divida = (-calculos.saldo(conta).map_or(0, |s| s.saldo)).max(0);
+    (divida - disponivel).max(0)
 }
 
 /// Id novo, aleatório, no formato de um UUID (sem as garantias de versão).

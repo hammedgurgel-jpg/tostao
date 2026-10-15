@@ -5,7 +5,7 @@ use std::future::Future;
 use std::task::{Context, Waker};
 
 use futures_executor::block_on;
-use tostao::aparelho::{formatar_valor, ler_mes, ler_valor, Aparelho, Destino, Plano, TipoDeConta};
+use tostao::aparelho::{formatar_valor, ler_mes, ler_valor, Aparelho, Destino, Estouro, Plano, TipoDeConta};
 use tostao::api::{erro_do_servidor, ApiError, HttpResponse, Transport};
 use tostao::dates::Date;
 use tostao::protocol::{CatalogRequest, TOSTAO_SCHEMA_VERSION};
@@ -236,4 +236,61 @@ fn sincronizacao_cancelada_no_meio_nao_esvazia_o_aparelho() {
     assert!(!resultado.sync_cancelled_because_another_in_flight);
     let contas = a.contas().unwrap();
     assert!(contas.iter().any(|c| c.nome == "Corrente"), "a sincronização seguinte perdeu o orçamento");
+}
+
+fn linha_completa<'a>(plano: &'a Plano, nome: &str) -> &'a tostao::aparelho::LinhaDoPlano {
+    plano
+        .grupos
+        .iter()
+        .flat_map(|g| &g.categorias)
+        .chain(&plano.sem_categoria)
+        .find(|l| l.nome == nome)
+        .unwrap_or_else(|| panic!("sem \"{nome}\" no plano: {plano:?}"))
+}
+
+/// O plano diz o tipo do estouro (dinheiro ou crédito) e a falta da fatura;
+/// cobrir o estouro e atribuir à categoria de pagamento zera as duas.
+#[test]
+fn estouro_falta_e_movimentacao_no_plano() {
+    let dia = Date::from_ymd_opt(2026, 10, 13).unwrap();
+    let outubro = Date::from_ymd_opt(2026, 10, 1).unwrap();
+    let categoria = |nome: &str| Destino::Categoria(nome.into());
+
+    let mut a = Aparelho::novo_orcamento("Família");
+    a.criar_conta("Corrente", TipoDeConta::Corrente).unwrap();
+    a.criar_conta("Cartão", TipoDeConta::Cartao).unwrap();
+    a.criar_grupo("Dia a dia").unwrap();
+    a.criar_categoria("Mercado", "Dia a dia").unwrap();
+    a.criar_categoria("Lazer", "Dia a dia").unwrap();
+    a.lancar("Corrente", dia, 1_000_000, &categoria("A atribuir")).unwrap();
+    a.atribuir("Mercado", outubro, 50_000).unwrap();
+    a.lancar("Corrente", dia, -80_000, &categoria("Mercado")).unwrap();
+    a.lancar("Cartão", dia, -60_000, &categoria("Lazer")).unwrap();
+
+    let plano = a.plano(outubro).unwrap();
+    assert_eq!(linha_completa(&plano, "Mercado").estouro, Some(Estouro::Dinheiro), "estouro em dinheiro");
+    assert_eq!(linha_completa(&plano, "Lazer").estouro, Some(Estouro::Credito), "estouro no crédito");
+    let pagamento = linha_completa(&plano, "Cartão");
+    assert!(pagamento.pagamento);
+    assert_eq!(pagamento.falta, 60_000, "a fatura de 60 não tem dinheiro reservado");
+    assert_eq!(pagamento.estouro, None);
+
+    // Cobre o estouro de Lazer tirando do A atribuir, e reserva a fatura.
+    a.movimentar("A atribuir", "Lazer", outubro, 60_000).unwrap();
+    a.movimentar("A atribuir", "Cartão", outubro, 60_000).unwrap();
+    let plano = a.plano(outubro).unwrap();
+    assert_eq!(linha_completa(&plano, "Lazer").disponivel, 0, "coberto: disponível 0");
+    assert_eq!(linha_completa(&plano, "Lazer").estouro, None);
+    assert_eq!(linha_completa(&plano, "Cartão").falta, 0, "fatura coberta");
+    assert_eq!(plano.a_atribuir, Some(1_000_000 - 50_000 - 60_000 - 60_000), "A atribuir depois de atribuir e cobrir");
+
+    // Mover de outra categoria: Mercado cede 10 para Lazer.
+    a.movimentar("Mercado", "Lazer", outubro, 10_000).unwrap();
+    let plano = a.plano(outubro).unwrap();
+    assert_eq!(linha(&plano, "Mercado").0, 40_000, "atribuído de Mercado diminui");
+    assert_eq!(linha(&plano, "Lazer").0, 70_000, "atribuído de Lazer aumenta");
+    assert_eq!(plano.a_atribuir, Some(1_000_000 - 50_000 - 60_000 - 60_000), "mover entre categorias não mexe no A atribuir");
+
+    assert!(a.movimentar("Lazer", "Lazer", outubro, 1_000).is_err(), "origem e destino iguais");
+    assert!(a.movimentar("Lazer", "A atribuir", outubro, 1_000).is_err(), "não se atribui a A atribuir");
 }
