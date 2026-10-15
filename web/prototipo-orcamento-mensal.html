@@ -1,0 +1,463 @@
+<!doctype html>
+<!--
+  PROTÓTIPO DESCARTÁVEL — ticket #13 (hammedgurgel-jpg/tostao).
+  Pergunta: como a tela do orçamento mensal deve parecer e se comportar no celular?
+  Três variantes da mesma tela, trocadas por ?variant=A|B|C ou pela barra flutuante (← →).
+  Os dados são fixos em memória e as contas são uma imitação simples do motor
+  (saldo = sobra positiva + atribuição + atividade). Nada é gravado. Não é código de produção.
+  Para abrir: dois cliques no arquivo, ou abrir no navegador do celular.
+-->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Protótipo: orçamento mensal</title>
+<style>
+  :root {
+    --bg: #f4f2ee; --card: #fff; --ink: #1d1c1a; --muted: #6f6a62; --line: #e4e0d8;
+    --pos: #2f7d4f; --pos-bg: #dcefe2; --neg: #b3261e; --neg-bg: #f8dcd9;
+    --warn: #8a6100; --warn-bg: #fbecc4; --zero: #8b867e; --zero-bg: #ebe8e2;
+    --accent: #2d4fa3; --accent-ink: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151413; --card: #1f1e1c; --ink: #f1eee8; --muted: #a39d93; --line: #33312d;
+      --pos: #7fd09c; --pos-bg: #1d3626; --neg: #ff8a80; --neg-bg: #43201d;
+      --warn: #f2c45a; --warn-bg: #3d3015; --zero: #a39d93; --zero-bg: #2a2926;
+      --accent: #8fa9ee; --accent-ink: #10172b;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { max-width: 430px; margin: 0 auto; min-height: 100vh; padding-bottom: 140px; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-weight: 600; font-size: 14px; }
+  .pill.pos { background: var(--pos-bg); color: var(--pos); }
+  .pill.neg { background: var(--neg-bg); color: var(--neg); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.zero { background: var(--zero-bg); color: var(--zero); }
+  .muted { color: var(--muted); }
+  .monthbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; }
+  .monthbar button { background: none; border: 0; font-size: 20px; padding: 4px 12px; }
+  .monthbar b { font-size: 17px; }
+
+  /* Folha inferior (atribuir / lançar), compartilhada */
+  .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 59; }
+  .sheet { position: fixed; left: 0; right: 0; bottom: 0; max-width: 430px; margin: 0 auto; z-index: 60;
+    background: var(--card); border-radius: 16px 16px 0 0; padding: 14px 16px 24px; box-shadow: 0 -6px 24px rgba(0,0,0,.2); }
+  .sheet h3 { margin: 0 0 4px; font-size: 17px; }
+  .sheet .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .sheet .display { font-size: 32px; font-weight: 700; text-align: right; padding: 10px 4px; }
+  .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .keypad button { padding: 14px 0; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-size: 20px; }
+  .actions { display: flex; gap: 8px; margin-top: 10px; }
+  .actions button { flex: 1; padding: 13px; border-radius: 10px; border: 0; font-weight: 600; }
+  .primary { background: var(--accent); color: var(--accent-ink); }
+  .secondary { background: var(--zero-bg); }
+  .seg { display: flex; gap: 4px; margin: 8px 0; }
+  .seg button { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); font-size: 13px; }
+  .seg button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  select { width: 100%; padding: 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; margin: 4px 0; }
+
+  /* Barra do protótipo: propositalmente fora do estilo do app */
+  #proto { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 50;
+    background: #111; color: #fff; border-radius: 999px; padding: 4px 6px; display: flex; align-items: center; gap: 4px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.4); font: 12px/1 ui-monospace, monospace; }
+  #proto button { background: #333; color: #fff; border: 0; border-radius: 999px; padding: 7px 11px; }
+  #proto span { padding: 0 6px; }
+  #estado { position: fixed; bottom: 56px; left: 8px; right: 8px; max-width: 414px; margin: 0 auto; max-height: 45vh; overflow: auto;
+    z-index: 49; background: #111; color: #9fe; font: 11px/1.3 ui-monospace, monospace; padding: 8px; border-radius: 8px; white-space: pre; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="sheet-root"></div>
+<pre id="estado" hidden></pre>
+<div id="proto">
+  <button id="prev">←</button><span id="label"></span><button id="next">→</button><button id="toggle-estado">estado</button>
+</div>
+
+<script>
+// ---------- Dados em memória (outubro e novembro de 2026, valores em centavos) ----------
+// Inspirado nos roteiros 1 e 2 de docs/analise/01: corrente com receita, cartão, um estouro em
+// dinheiro (Mercado), um estouro no crédito (Lazer) e transações sem categoria.
+const contas = [
+  { id: "corrente", nome: "Corrente", tipo: "dinheiro" },
+  { id: "poupanca", nome: "Poupança", tipo: "dinheiro" },
+  { id: "nubank", nome: "Cartão Nubank", tipo: "cartao" },
+];
+const grupos = [
+  { id: "cartoes", nome: "Pagamento de cartões", categorias: [{ id: "pg-nubank", nome: "Cartão Nubank", pagamento: "nubank" }] },
+  { id: "fixas", nome: "Contas fixas", categorias: [
+    { id: "aluguel", nome: "Aluguel" }, { id: "luz", nome: "Luz" }, { id: "internet", nome: "Internet" } ] },
+  { id: "dia", nome: "Dia a dia", categorias: [
+    { id: "mercado", nome: "Mercado" }, { id: "farmacia", nome: "Farmácia" }, { id: "transporte", nome: "Transporte" } ] },
+  { id: "lazer", nome: "Lazer e reservas", categorias: [
+    { id: "lazer", nome: "Lazer" }, { id: "viagem", nome: "Viagem" }, { id: "reserva", nome: "Reserva de emergência" } ] },
+];
+const meses = ["2026-10", "2026-11"];
+const st = {
+  mes: "2026-10",
+  receita: { "2026-10": 520000, "2026-11": 0 },
+  atribuido: {
+    "2026-10": { aluguel: 180000, luz: 22000, internet: 10000, mercado: 80000, farmacia: 10000, transporte: 25000, lazer: 0, viagem: 30000, reserva: 50000, "pg-nubank": 0 },
+    "2026-11": {},
+  },
+  // Transações: valor < 0 é saída. conta define se é dinheiro ou crédito.
+  transacoes: [
+    { mes: "2026-10", conta: "corrente", cat: "aluguel", valor: -180000, desc: "Aluguel" },
+    { mes: "2026-10", conta: "corrente", cat: "luz", valor: -19870, desc: "Enel" },
+    { mes: "2026-10", conta: "corrente", cat: "mercado", valor: -86350, desc: "Assaí" },
+    { mes: "2026-10", conta: "nubank", cat: "farmacia", valor: -4590, desc: "Drogasil" },
+    { mes: "2026-10", conta: "nubank", cat: "transporte", valor: -12000, desc: "Uber" },
+    { mes: "2026-10", conta: "nubank", cat: "lazer", valor: -6000, desc: "Cinema" },
+    { mes: "2026-10", conta: "corrente", cat: null, valor: -4000, desc: "Pix sem categoria" },
+  ],
+};
+const brl = c => (c < 0 ? "−" : "") + "R$ " + (Math.abs(c) / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+const tipoConta = id => contas.find(c => c.id === id).tipo;
+const todasCats = () => grupos.flatMap(g => g.categorias);
+
+// ---------- Imitação do motor (só para o protótipo) ----------
+function calcular() {
+  const out = {};
+  let disponivelAnterior = 0, estouroAnterior = 0, sobra = {};
+  for (const mes of meses) {
+    const atr = st.atribuido[mes] || {};
+    const cats = {};
+    let estouroDinheiro = 0;
+    for (const c of todasCats()) {
+      const trs = st.transacoes.filter(t => t.mes === mes && t.cat === c.id);
+      let dinheiro = trs.filter(t => tipoConta(t.conta) === "dinheiro").reduce((s, t) => s + t.valor, 0);
+      let credito = trs.filter(t => tipoConta(t.conta) === "cartao").reduce((s, t) => s + t.valor, 0);
+      const atribuido = atr[c.id] || 0;
+      const anterior = Math.max(sobra[c.id] || 0, 0);
+      let atividade = dinheiro + credito;
+      cats[c.id] = { atribuido, anterior, atividade, dinheiro, credito };
+    }
+    // Gasto no cartão coberto passa para o pagamento do cartão (versão simplificada).
+    for (const c of todasCats()) {
+      if (c.pagamento) continue;
+      const k = cats[c.id];
+      const semCredito = k.anterior + k.atribuido + k.dinheiro;
+      const coberto = Math.min(Math.max(semCredito, 0), -k.credito);
+      const pg = todasCats().find(x => x.pagamento === "nubank").id;
+      cats[pg].atividade += coberto; cats[pg].coberto = (cats[pg].coberto || 0) + coberto;
+      k.disponivel = k.anterior + k.atribuido + k.atividade;
+      k.estouro = k.disponivel < 0 ? (semCredito < 0 ? "dinheiro" : "credito") : null;
+      if (k.estouro === "dinheiro") estouroDinheiro += Math.min(semCredito, 0);
+    }
+    for (const c of todasCats().filter(c => c.pagamento)) {
+      const k = cats[c.id];
+      k.disponivel = k.anterior + k.atribuido + k.atividade;
+      const divida = -st.transacoes.filter(t => t.conta === c.pagamento && t.mes <= mes).reduce((s, t) => s + t.valor, 0);
+      k.divida = divida; k.falta = Math.max(divida - k.disponivel, 0);
+    }
+    const semCat = st.transacoes.filter(t => t.mes === mes && t.cat === null).reduce((s, t) => s + t.valor, 0);
+    if (semCat < 0) estouroDinheiro += semCat;
+    const totalAtribuido = Object.values(atr).reduce((s, v) => s + v, 0);
+    const disponivel = disponivelAnterior + estouroAnterior + st.receita[mes] - totalAtribuido;
+    out[mes] = { cats, semCat, disponivel, totalAtribuido,
+      totalAtividade: Object.values(cats).reduce((s, k) => s + k.atividade, 0) + semCat,
+      totalDisponivel: Object.values(cats).reduce((s, k) => s + k.disponivel, 0) };
+    disponivelAnterior = disponivel; estouroAnterior = estouroDinheiro;
+    sobra = Object.fromEntries(Object.entries(cats).map(([id, k]) => [id, k.disponivel]));
+  }
+  // "A atribuir" = disponível do mês menos o atribuído no futuro (regra do CONTEXT.md).
+  meses.forEach((m, i) => {
+    const futuro = meses.slice(i + 1).reduce((s, f) => s + out[f].totalAtribuido, 0);
+    const d = out[m].disponivel;
+    out[m].aAtribuir = d > 0 && futuro > 0 ? d - Math.min(futuro, d) : d;
+  });
+  return out;
+}
+const saldoContas = () => contas.map(c => ({ ...c,
+  saldo: (c.id === "corrente" ? 520000 : c.id === "poupanca" ? 300000 : 0)
+    + st.transacoes.filter(t => t.conta === c.id && t.mes <= st.mes && !t.fantasma).reduce((s, t) => s + t.valor, 0) }));
+
+function pillClass(k) {
+  if (k.estouro === "dinheiro") return "neg";
+  if (k.estouro === "credito") return "warn";
+  if (k.falta > 0) return "warn";
+  return k.disponivel > 0 ? "pos" : "zero";
+}
+function mesNome(m) {
+  return new Date(m + "-15").toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+}
+function nota(c, k) {
+  if (k.estouro === "dinheiro") return "Estourou em dinheiro: sai do A atribuir do mês seguinte";
+  if (k.estouro === "credito") return "Estourou no crédito: vira dívida no cartão";
+  if (k.falta > 0) return `Falta ${brl(k.falta)} para a fatura`;
+  return "";
+}
+
+// ---------- Folhas inferiores: atribuir e lançar ----------
+function fecharFolha() { document.getElementById("sheet-root").innerHTML = ""; }
+function abrirAtribuir(catId, modo = "atribuir") {
+  const calc = calcular()[st.mes], k = calc.cats[catId], c = todasCats().find(x => x.id === catId);
+  let entrada = "", origem = "a-atribuir";
+  const root = document.getElementById("sheet-root");
+  const render = () => {
+    const opcoes = ['<option value="a-atribuir">A atribuir (' + brl(calc.aAtribuir) + ')</option>']
+      .concat(todasCats().filter(x => x.id !== catId).map(x => `<option value="${x.id}" ${origem === x.id ? "selected" : ""}>${x.nome} (${brl(calc.cats[x.id].disponivel)})</option>`));
+    root.innerHTML = `<div class="scrim" data-x></div><div class="sheet">
+      <h3>${c.nome}</h3>
+      <div class="row"><span class="muted">Sobrou do mês anterior</span><span class="num">${brl(k.anterior)}</span></div>
+      <div class="row"><span class="muted">Atribuído</span><span class="num">${brl(k.atribuido)}</span></div>
+      <div class="row"><span class="muted">Atividade</span><span class="num">${brl(k.atividade)}</span></div>
+      <div class="row"><span>Disponível</span><span class="pill ${pillClass(k)} num">${brl(k.disponivel)}</span></div>
+      ${nota(c, k) ? `<p class="muted" style="margin:6px 0 0">${nota(c, k)}</p>` : ""}
+      <div class="seg"><button data-modo="atribuir" class="${modo === "atribuir" ? "on" : ""}">Atribuir</button><button data-modo="mover" class="${modo === "mover" ? "on" : ""}">Mover de outra</button><button data-modo="cobrir" class="${modo === "cobrir" ? "on" : ""}">Cobrir estouro</button></div>
+      ${modo !== "atribuir" ? `<label class="muted" style="font-size:13px">Tirar de</label><select data-origem>${opcoes.join("")}</select>` : ""}
+      <div class="display num">${brl(Number(entrada || 0))}</div>
+      <div class="keypad">${[1,2,3,4,5,6,7,8,9,"00",0,"⌫"].map(n => `<button data-k="${n}">${n}</button>`).join("")}</div>
+      <div class="actions"><button class="secondary" data-x>Cancelar</button><button class="primary" data-ok>${modo === "atribuir" ? "Atribuir" : "Mover"}</button></div>
+    </div>`;
+    if (modo === "cobrir" && !entrada && k.disponivel < 0) { entrada = String(-k.disponivel); render(); }
+  };
+  root.onclick = e => {
+    const t = e.target;
+    if (t.dataset.x !== undefined) return fecharFolha();
+    if (t.dataset.modo) { modo = t.dataset.modo; entrada = ""; return render(); }
+    if (t.dataset.k) { entrada = t.dataset.k === "⌫" ? entrada.slice(0, -1) : (entrada + t.dataset.k).slice(0, 9); return render(); }
+    if (t.dataset.ok !== undefined) {
+      const v = Number(entrada || 0), atr = st.atribuido[st.mes];
+      atr[catId] = (atr[catId] || 0) + v;
+      if (modo !== "atribuir" && origem !== "a-atribuir") atr[origem] = (atr[origem] || 0) - v;
+      fecharFolha(); desenhar();
+    }
+  };
+  root.onchange = e => { if (e.target.dataset.origem !== undefined) origem = e.target.value; };
+  render();
+}
+function abrirLancar(catPadrao = null) {
+  let entrada = "", tipo = "saida", conta = "corrente", cat = catPadrao || "mercado", destino = "nubank";
+  const root = document.getElementById("sheet-root");
+  const render = () => {
+    root.innerHTML = `<div class="scrim" data-x></div><div class="sheet">
+      <h3>Lançar</h3>
+      <div class="seg">${[["saida","Saída"],["entrada","Entrada"],["transferencia","Transferência"]].map(([v,l]) => `<button data-tipo="${v}" class="${tipo===v?"on":""}">${l}</button>`).join("")}</div>
+      <select data-conta>${contas.map(c => `<option value="${c.id}" ${c.id===conta?"selected":""}>${tipo==="transferencia"?"De: ":""}${c.nome}</option>`).join("")}</select>
+      ${tipo === "transferencia"
+        ? `<select data-destino>${contas.filter(c=>c.id!==conta).map(c => `<option value="${c.id}" ${c.id===destino?"selected":""}>Para: ${c.nome}${c.tipo==="cartao"?" (pagar fatura)":""}</option>`).join("")}</select>`
+        : tipo === "saida" ? `<select data-cat>${grupos.map(g => `<optgroup label="${g.nome}">${g.categorias.filter(c=>!c.pagamento).map(c => `<option value="${c.id}" ${c.id===cat?"selected":""}>${c.nome}</option>`).join("")}</optgroup>`).join("")}<option value="">Sem categoria</option></select>`
+        : `<p class="muted" style="margin:6px 0">Entrada vai para <b>A atribuir</b>.</p>`}
+      <div class="display num">${brl(Number(entrada || 0))}</div>
+      <div class="keypad">${[1,2,3,4,5,6,7,8,9,"00",0,"⌫"].map(n => `<button data-k="${n}">${n}</button>`).join("")}</div>
+      <div class="actions"><button class="secondary" data-x>Cancelar</button><button class="primary" data-ok>Lançar</button></div>
+    </div>`;
+  };
+  root.onclick = e => {
+    const t = e.target;
+    if (t.dataset.x !== undefined) return fecharFolha();
+    if (t.dataset.tipo) { tipo = t.dataset.tipo; return render(); }
+    if (t.dataset.k) { entrada = t.dataset.k === "⌫" ? entrada.slice(0, -1) : (entrada + t.dataset.k).slice(0, 9); return render(); }
+    if (t.dataset.ok !== undefined) {
+      const v = Number(entrada || 0);
+      if (tipo === "saida") st.transacoes.push({ mes: st.mes, conta, cat: cat || null, valor: -v, desc: "Lançado" });
+      if (tipo === "entrada") { st.receita[st.mes] += v; st.transacoes.push({ mes: st.mes, conta, cat: "__receita", valor: v, desc: "Receita" }); }
+      if (tipo === "transferencia") {
+        st.transacoes.push({ mes: st.mes, conta, cat: "__transf", valor: -v, desc: "Transferência" });
+        st.transacoes.push({ mes: st.mes, conta: destino, cat: "__transf", valor: v, desc: "Transferência" });
+        // Pagamento de fatura sai da categoria de pagamento do cartão.
+        if (tipoConta(destino) === "cartao" && tipoConta(conta) === "dinheiro")
+          st.transacoes.push({ mes: st.mes, conta, cat: "pg-" + destino, valor: -v, desc: "Pagamento", fantasma: true });
+      }
+      fecharFolha(); desenhar();
+    }
+  };
+  root.onchange = e => {
+    const d = e.target.dataset;
+    if (d.conta !== undefined) conta = e.target.value;
+    if (d.cat !== undefined) cat = e.target.value;
+    if (d.destino !== undefined) destino = e.target.value;
+    render();
+  };
+  render();
+}
+
+function barraMes() {
+  const i = meses.indexOf(st.mes);
+  return `<div class="monthbar"><button data-mes="${i - 1}" ${i === 0 ? "disabled" : ""}>‹</button><b>${mesNome(st.mes)}</b><button data-mes="${i + 1}" ${i === meses.length - 1 ? "disabled" : ""}>›</button></div>`;
+}
+
+// ---------- Variante A: lista no estilo YNAB ----------
+// Faixa fixa com "A atribuir" no topo, grupos com colunas Atribuído / Disponível,
+// toque na categoria abre a folha de atribuir, botão flutuante "+" para lançar.
+function VariantA(calc) {
+  const a = calc.aAtribuir;
+  const cor = a > 0 ? "var(--pos)" : a < 0 ? "var(--neg)" : "var(--zero)";
+  return `
+  <style>
+    .va-top { position: sticky; top: 0; z-index: 5; background: var(--bg); padding-bottom: 6px; }
+    .va-rta { margin: 0 12px; border-radius: 12px; padding: 12px 14px; background: ${cor}; color: #fff; display: flex; justify-content: space-between; align-items: center; }
+    .va-rta b { font-size: 24px; display: block; }
+    .va-rta button { background: rgba(255,255,255,.25); border: 0; color: #fff; border-radius: 8px; padding: 8px 12px; font-weight: 600; }
+    .va-head { display: grid; grid-template-columns: 1fr 88px 96px; padding: 8px 14px 4px; font-size: 12px; text-transform: uppercase; color: var(--muted); }
+    .va-head span:not(:first-child) { text-align: right; }
+    .va-grupo { background: var(--card); margin: 8px 0; }
+    .va-gtit { display: grid; grid-template-columns: 1fr 88px 96px; padding: 8px 14px; font-weight: 700; font-size: 13px; background: var(--zero-bg); }
+    .va-gtit span:not(:first-child) { text-align: right; }
+    .va-cat { display: grid; grid-template-columns: 1fr 88px 96px; align-items: center; padding: 11px 14px; border-top: 1px solid var(--line); width: 100%; background: none; border-left: 0; border-right: 0; border-bottom: 0; text-align: left; }
+    .va-cat > span:not(:first-child) { text-align: right; }
+    .va-cat small { display: block; color: var(--muted); font-size: 11px; }
+    .va-fab { position: fixed; right: calc(50% - 200px); bottom: 70px; width: 58px; height: 58px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); font-size: 30px; box-shadow: 0 4px 12px rgba(0,0,0,.3); z-index: 10; }
+    @media (max-width: 430px) { .va-fab { right: 16px; } }
+  </style>
+  <div class="va-top">
+    ${barraMes()}
+    <div class="va-rta"><div><small>A atribuir</small><b class="num">${brl(a)}</b></div>
+      ${a > 0 ? `<button data-auto>Atribuir</button>` : a < 0 ? `<small>Atribuiu mais do que tem</small>` : `<small>Tudo atribuído ✓</small>`}</div>
+    <div class="va-head"><span>Categoria</span><span>Atribuído</span><span>Disponível</span></div>
+  </div>
+  ${grupos.map(g => {
+    const ks = g.categorias.map(c => calc.cats[c.id]);
+    return `<div class="va-grupo">
+      <div class="va-gtit"><span>${g.nome}</span><span class="num">${brl(ks.reduce((s,k)=>s+k.atribuido,0))}</span><span class="num">${brl(ks.reduce((s,k)=>s+k.disponivel,0))}</span></div>
+      ${g.categorias.map(c => { const k = calc.cats[c.id]; return `<button class="va-cat" data-cat="${c.id}">
+        <span>${c.nome}${nota(c,k) ? `<small>${nota(c,k)}</small>` : ""}</span>
+        <span class="num muted">${brl(k.atribuido)}</span>
+        <span><span class="pill ${pillClass(k)} num">${brl(k.disponivel)}</span></span></button>`; }).join("")}
+    </div>`; }).join("")}
+  ${calc.semCat ? `<div class="va-grupo"><div class="va-cat"><span>Sem categoria<small>Classifique estas transações</small></span><span></span><span><span class="pill neg num">${brl(calc.semCat)}</span></span></div></div>` : ""}
+  <button class="va-fab" data-lancar aria-label="Lançar transação">+</button>`;
+}
+
+// ---------- Variante B: envelopes em blocos + barra de abas ----------
+// Um número por categoria (disponível) em blocos de 2 colunas, grupos recolhíveis,
+// "A atribuir" grande no cabeçalho, barra inferior com Orçamento / Lançar / Contas.
+const recolhidos = new Set();
+let abaB = "orcamento";
+function VariantB(calc) {
+  const a = calc.aAtribuir;
+  const cabec = `
+    <style>
+      .vb-hero { text-align: center; padding: 6px 12px 16px; }
+      .vb-hero .big { font-size: 38px; font-weight: 800; letter-spacing: -1px; }
+      .vb-hero .big.pos { color: var(--pos); } .vb-hero .big.neg { color: var(--neg); } .vb-hero .big.zero { color: var(--zero); }
+      .vb-g { margin: 0 12px 10px; }
+      .vb-gtit { display: flex; justify-content: space-between; width: 100%; background: none; border: 0; padding: 8px 2px; font-weight: 700; color: var(--muted); font-size: 13px; text-transform: uppercase; }
+      .vb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .vb-env { background: var(--card); border-radius: 14px; padding: 12px; border: 2px solid transparent; text-align: left; min-height: 82px; display: flex; flex-direction: column; justify-content: space-between; }
+      .vb-env.neg { border-color: var(--neg); } .vb-env.warn { border-color: var(--warn); }
+      .vb-env .nm { font-size: 14px; }
+      .vb-env .v { font-size: 19px; font-weight: 700; }
+      .vb-env .v.pos { color: var(--pos); } .vb-env .v.neg { color: var(--neg); } .vb-env .v.warn { color: var(--warn); } .vb-env .v.zero { color: var(--zero); }
+      .vb-bar { position: fixed; bottom: 0; left: 0; right: 0; max-width: 430px; margin: 0 auto; background: var(--card); border-top: 1px solid var(--line); display: grid; grid-template-columns: 1fr 1fr 1fr; padding: 6px 0 58px; z-index: 10; }
+      .vb-bar button { background: none; border: 0; padding: 6px; font-size: 12px; color: var(--muted); }
+      .vb-bar button.on { color: var(--accent); font-weight: 700; }
+      .vb-bar .mid { background: var(--accent); color: var(--accent-ink); border-radius: 14px; margin: 0 14px; font-size: 14px; font-weight: 700; }
+      .vb-conta { display: flex; justify-content: space-between; background: var(--card); margin: 6px 12px; padding: 14px; border-radius: 12px; }
+    </style>`;
+  const bar = `<nav class="vb-bar"><button data-aba="orcamento" class="${abaB==="orcamento"?"on":""}">Orçamento</button><button class="mid" data-lancar>+ Lançar</button><button data-aba="contas" class="${abaB==="contas"?"on":""}">Contas</button></nav>`;
+  if (abaB === "contas") {
+    return cabec + barraMes() + saldoContas().map(c => `<div class="vb-conta"><span>${c.nome}<br><small class="muted">${c.tipo === "cartao" ? "Cartão de crédito" : "Dinheiro"}</small></span><span class="num pill ${c.saldo < 0 ? "neg" : "pos"}">${brl(c.saldo)}</span></div>`).join("") + bar;
+  }
+  return cabec + barraMes() + `
+    <div class="vb-hero"><div class="muted">A atribuir</div>
+      <div class="big num ${a > 0 ? "pos" : a < 0 ? "neg" : "zero"}">${brl(a)}</div>
+      <div class="muted" style="font-size:13px">Toque num envelope para atribuir ou mover dinheiro</div></div>
+    ${grupos.map(g => {
+      const fechado = recolhidos.has(g.id), tot = g.categorias.reduce((s,c)=>s+calc.cats[c.id].disponivel,0);
+      const alerta = g.categorias.some(c => ["neg","warn"].includes(pillClass(calc.cats[c.id])));
+      return `<div class="vb-g"><button class="vb-gtit" data-grupo="${g.id}"><span>${fechado ? "▸" : "▾"} ${g.nome}${alerta ? " •" : ""}</span><span class="num">${brl(tot)}</span></button>
+      ${fechado ? "" : `<div class="vb-grid">${g.categorias.map(c => { const k = calc.cats[c.id], pc = pillClass(k);
+        return `<button class="vb-env ${pc === "neg" || pc === "warn" ? pc : ""}" data-cat="${c.id}"><span class="nm">${c.nome}</span><span class="v num ${pc}">${brl(k.disponivel)}</span></button>`; }).join("")}</div>`}</div>`; }).join("")}
+    ${calc.semCat ? `<div class="vb-g"><div class="vb-env neg" style="min-height:0"><span class="nm">Sem categoria — classifique</span><span class="v num neg">${brl(calc.semCat)}</span></div></div>` : ""}
+    ${bar}`;
+}
+
+// ---------- Variante C: "o que precisa de mim" + edição direta ----------
+// Topo com A atribuir e uma fila de pendências (estouros, fatura, sem categoria) com ação
+// de um toque. Abaixo, lista compacta onde o atribuído é editado direto na linha.
+// Lançar fica numa barra fixa de largura total.
+function VariantC(calc) {
+  const a = calc.aAtribuir;
+  const pend = [];
+  for (const c of todasCats()) {
+    const k = calc.cats[c.id];
+    if (k.estouro) pend.push({ c, k, txt: k.estouro === "dinheiro" ? `${c.nome} estourou ${brl(-k.disponivel)} em dinheiro` : `${c.nome} estourou ${brl(-k.disponivel)} no cartão`, acao: "Cobrir", cobrir: true });
+    else if (k.falta > 0) pend.push({ c, k, txt: `Fatura do ${c.nome}: faltam ${brl(k.falta)}`, acao: "Atribuir" });
+  }
+  if (calc.semCat) pend.push({ txt: `${brl(-calc.semCat)} sem categoria`, acao: "Ver" });
+  return `
+  <style>
+    .vc-top { background: var(--card); padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+    .vc-rta { display: flex; justify-content: space-between; align-items: baseline; padding: 0 16px; }
+    .vc-rta b { font-size: 28px; }
+    .vc-pend { margin: 10px 12px 0; display: flex; flex-direction: column; gap: 6px; }
+    .vc-p { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 10px; border-radius: 10px; background: var(--warn-bg); color: var(--warn); font-size: 13px; }
+    .vc-p.neg { background: var(--neg-bg); color: var(--neg); }
+    .vc-p button { border: 0; border-radius: 8px; padding: 6px 10px; background: var(--card); color: var(--ink); font-weight: 600; font-size: 12px; }
+    .vc-g { padding: 10px 16px 2px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; display: flex; justify-content: space-between; }
+    .vc-l { display: grid; grid-template-columns: 1fr 96px 92px; align-items: center; gap: 6px; padding: 6px 16px; }
+    .vc-l input { width: 100%; text-align: right; padding: 7px 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; font-variant-numeric: tabular-nums; }
+    .vc-l .d { text-align: right; }
+    .vc-l .nm { font-size: 14px; }
+    .vc-lancar { position: fixed; left: 0; right: 0; bottom: 56px; max-width: 430px; margin: 0 auto; padding: 8px 12px; z-index: 10; }
+    .vc-lancar button { width: 100%; padding: 14px; border-radius: 12px; border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 16px; box-shadow: 0 4px 12px rgba(0,0,0,.2); }
+  </style>
+  <div class="vc-top">${barraMes()}
+    <div class="vc-rta"><span class="muted">A atribuir</span><b class="num" style="color:${a > 0 ? "var(--pos)" : a < 0 ? "var(--neg)" : "var(--zero)"}">${brl(a)}</b></div>
+    <div class="vc-pend">${pend.length ? pend.map((p, i) => `<div class="vc-p ${p.k && p.k.estouro === "dinheiro" ? "neg" : ""}"><span>${p.txt}</span>${p.c ? `<button data-pend="${p.c.id}" data-cobrir="${p.cobrir ? 1 : 0}">${p.acao}</button>` : ""}</div>`).join("") : `<div class="muted" style="font-size:13px">Nada pendente neste mês ✓</div>`}</div>
+  </div>
+  <div class="vc-l muted" style="font-size:11px;text-transform:uppercase;padding-top:10px"><span>Categoria</span><span style="text-align:right">Atribuído</span><span style="text-align:right">Disponível</span></div>
+  ${grupos.map(g => `<div class="vc-g"><span>${g.nome}</span></div>
+    ${g.categorias.map(c => { const k = calc.cats[c.id]; return `<div class="vc-l">
+      <span class="nm">${c.nome}</span>
+      <input inputmode="decimal" data-atr="${c.id}" value="${(k.atribuido / 100).toFixed(2).replace(".", ",")}">
+      <span class="d"><span class="pill ${pillClass(k)} num" data-cat="${c.id}">${brl(k.disponivel)}</span></span></div>`; }).join("")}`).join("")}
+  <div class="vc-lancar"><button data-lancar>+ Lançar transação</button></div>`;
+}
+
+// ---------- Troca de variantes e desenho ----------
+const VARIANTES = { A: ["Lista YNAB", VariantA], B: ["Envelopes em blocos", VariantB], C: ["Pendências + edição direta", VariantC] };
+const chaves = Object.keys(VARIANTES);
+let variante = new URLSearchParams(location.search).get("variant") || "A";
+if (!VARIANTES[variante]) variante = "A";
+function trocar(d) {
+  variante = chaves[(chaves.indexOf(variante) + d + chaves.length) % chaves.length];
+  const u = new URL(location.href); u.searchParams.set("variant", variante); history.replaceState(null, "", u);
+  desenhar();
+}
+function desenhar() {
+  const calc = calcular();
+  document.getElementById("app").innerHTML = VARIANTES[variante][1](calc[st.mes]);
+  document.getElementById("label").textContent = `${variante} (${VARIANTES[variante][0]})`;
+  document.getElementById("estado").textContent = JSON.stringify({ variante, mes: st.mes, aAtribuir: calc[st.mes].aAtribuir,
+    disponivelDoMes: calc[st.mes].disponivel, semCategoria: calc[st.mes].semCat, atribuido: st.atribuido[st.mes],
+    categorias: Object.fromEntries(Object.entries(calc[st.mes].cats).map(([id, k]) => [id, { atr: k.atribuido, ativ: k.atividade, disp: k.disponivel, estouro: k.estouro, falta: k.falta }])),
+    contas: saldoContas().map(c => [c.nome, c.saldo]) }, null, 1);
+}
+document.getElementById("prev").onclick = () => trocar(-1);
+document.getElementById("next").onclick = () => trocar(1);
+document.getElementById("toggle-estado").onclick = () => { const e = document.getElementById("estado"); e.hidden = !e.hidden; };
+addEventListener("keydown", e => {
+  if (e.target.closest("input, textarea, [contenteditable]")) return;
+  if (e.key === "ArrowLeft") trocar(-1);
+  if (e.key === "ArrowRight") trocar(1);
+});
+document.getElementById("app").addEventListener("click", e => {
+  const t = e.target.closest("button, [data-cat]");
+  if (!t) return;
+  const d = t.dataset;
+  if (d.mes !== undefined) { st.mes = meses[Number(d.mes)]; return desenhar(); }
+  if (d.lancar !== undefined) return abrirLancar();
+  if (d.grupo) { recolhidos.has(d.grupo) ? recolhidos.delete(d.grupo) : recolhidos.add(d.grupo); return desenhar(); }
+  if (d.aba) { abaB = d.aba; return desenhar(); }
+  if (d.pend) return abrirAtribuir(d.pend, d.cobrir === "1" ? "cobrir" : "atribuir");
+  if (d.auto !== undefined) { const p = calcular()[st.mes]; const alvo = todasCats().find(c => p.cats[c.id].disponivel < 0) || todasCats()[1]; return abrirAtribuir(alvo.id); }
+  if (d.cat) return abrirAtribuir(d.cat);
+});
+document.getElementById("app").addEventListener("change", e => {
+  const id = e.target.dataset.atr;
+  if (!id) return;
+  const v = Math.round(Number(e.target.value.replace(/\./g, "").replace(",", ".")) * 100);
+  if (!Number.isNaN(v)) { st.atribuido[st.mes][id] = v; desenhar(); }
+});
+desenhar();
+</script>
+</body>
+</html>
