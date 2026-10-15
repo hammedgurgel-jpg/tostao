@@ -1,4 +1,4 @@
-import init, { Tostao, formatarValor } from "./pkg/tostao.js";
+import init, { Tostao, formatarValor, resumoDoBackup } from "./pkg/tostao.js";
 
 const $ = (id) => document.getElementById(id);
 let t;
@@ -28,13 +28,6 @@ function somarMes(mes, d) {
   const [ano, m] = mes.split("-").map(Number);
   const x = new Date(ano, m - 1 + d, 1);
   return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`;
-}
-
-/** Preenche um <select> mantendo a escolha atual, se ainda existir. */
-function preencher(select, opcoes) {
-  const atual = select.value;
-  select.innerHTML = opcoes.map(([valor, rotulo]) => `<option value="${esc(valor)}">${esc(rotulo)}</option>`).join("");
-  if (opcoes.some(([valor]) => valor === atual)) select.value = atual;
 }
 
 // Armazenamento: uma cópia (texto JSON) no IndexedDB do navegador.
@@ -145,7 +138,7 @@ function renderPlano(plano) {
     const atribuido = g.categorias.reduce((s, c) => s + c.atribuido, 0);
     const disponivel = g.categorias.reduce((s, c) => s + c.disponivel, 0);
     return `<div class="grupo" style="margin: 0 0 12px">
-      <div class="grupo-cabeca"><span>${esc(g.nome)}</span><span class="num">${formatarValor(atribuido)}</span><span class="num ${disponivel < 0 ? "negativo" : ""}">${formatarValor(disponivel)}</span></div>
+      <div class="grupo-cabeca"><span>${esc(g.nome)}<button type="button" class="acao-pequena" data-nova-categoria="${esc(g.nome)}">+ categoria</button></span><span class="num">${formatarValor(atribuido)}</span><span class="num ${disponivel < 0 ? "negativo" : ""}">${formatarValor(disponivel)}</span></div>
       ${g.categorias.map(linhaDaCategoria).join("")}
     </div>`;
   });
@@ -159,7 +152,7 @@ function renderPlano(plano) {
       </div>
     </div>`);
   }
-  $("plano").innerHTML = grupos.length ? grupos.join("") : `<p class="suave" style="padding: 0 14px 14px">Nenhum grupo ainda. Crie um grupo e uma categoria embaixo.</p>`;
+  $("plano").innerHTML = grupos.length ? grupos.join("") : `<p class="suave" style="padding: 0 14px 4px">Nenhum grupo ainda. Toque em + grupo para começar.</p>`;
 }
 
 function renderContas(contas) {
@@ -176,7 +169,6 @@ function render() {
   contasAtuais = JSON.parse(t.contas());
   renderPlano(plano);
   renderContas(contasAtuais);
-  preencher($("categoria-grupo"), plano.grupos.map((g) => [g.nome, g.nome]));
 }
 
 /** Depois de cada mudança: grava a cópia (se der) e redesenha a tela. */
@@ -399,21 +391,121 @@ function abrirLancar() {
   desenhar();
 }
 
-// ---------- Formulários de contas, grupos e categorias ----------
+// ---------- Criar conta, grupo e categoria ----------
 
-/** Roda uma ação do usuário; mostra o erro do núcleo, se houver. */
-function acao(fn) {
-  return async (evento) => {
-    evento.preventDefault();
-    try {
-      fn();
-    } catch (e) {
-      $("erro").textContent = String(e);
+const TIPOS_DE_CONTA = [
+  ["corrente", "Corrente"],
+  ["poupanca", "Poupança"],
+  ["dinheiro", "Dinheiro"],
+  ["cartao", "Cartão"],
+  ["acompanhamento", "Acompanhamento"],
+];
+
+/**
+ * Folha com um nome (e, se `comTipo`, o tipo da conta). `criar(nome, tipo)`
+ * faz a mudança; o erro do núcleo fica na folha.
+ */
+function abrirCriar(titulo, { comTipo = false, dica = "", placeholder = "" }, criar) {
+  let tipo = "corrente";
+  abrirFolha(`
+    <h3>${esc(titulo)}</h3>
+    ${dica ? `<p class="suave" style="margin: 0">${esc(dica)}</p>` : ""}
+    <label>Nome <input data-nome autocomplete="off" placeholder="${esc(placeholder)}"></label>
+    ${comTipo ? `<div class="tipos" role="group" aria-label="Tipo da conta">${TIPOS_DE_CONTA.map(([v, r]) => `<button type="button" data-tipo="${v}" class="${v === tipo ? "ligado" : ""}">${r}</button>`).join("")}</div>` : ""}
+    <p class="aviso" data-erro></p>
+    <div class="acoes">
+      <button type="button" data-cancelar>Cancelar</button>
+      <button type="button" class="principal" data-confirmar>Criar</button>
+    </div>`);
+  const raiz = $("folha-raiz");
+  raiz.querySelector("[data-nome]").focus();
+  raiz.onclick = async (e) => {
+    const b = e.target.closest("button");
+    if (e.target.dataset.fechar !== undefined || (b && b.dataset.cancelar !== undefined)) return fecharFolha();
+    if (!b) return;
+    if (b.dataset.tipo) {
+      tipo = b.dataset.tipo;
+      raiz.querySelectorAll("[data-tipo]").forEach((x) => x.classList.toggle("ligado", x === b));
       return;
     }
+    if (b.dataset.confirmar !== undefined) {
+      const nome = raiz.querySelector("[data-nome]").value.trim();
+      try {
+        criar(nome, tipo);
+      } catch (err) {
+        return erroNaFolha(err);
+      }
+      fecharFolha();
+      $("erro").textContent = "";
+      await aposMudanca();
+    }
+  };
+}
+
+// ---------- Backup em arquivo JSON ----------
+
+/** Baixa o orçamento como arquivo; o mês da tela vai como `ultimo_mes`. */
+function exportarBackup() {
+  const aviso = $("backup-aviso");
+  try {
+    const texto = t.exportar(new Date().toISOString(), $("mes").value);
+    const url = URL.createObjectURL(new Blob([texto], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `tostao-${hojeIso()}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    aviso.textContent = "";
+  } catch (e) {
+    aviso.textContent = `Não deu para exportar: ${e}`;
+  }
+}
+
+function dataDoBackup(iso) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+/**
+ * Lê o arquivo escolhido e, se o formato e a versão conferem, mostra a data e
+ * as contagens. Só "Substituir" mexe no orçamento; cancelar não muda nada.
+ */
+function confirmarImportacao(texto) {
+  const aviso = $("backup-aviso");
+  let resumo;
+  try {
+    resumo = JSON.parse(resumoDoBackup(texto));
+  } catch (e) {
+    aviso.textContent = `Arquivo recusado: ${e}. O orçamento não mudou.`;
+    return;
+  }
+  aviso.textContent = "";
+  const c = resumo.contagens;
+  abrirFolha(`
+    <h3>Importar backup</h3>
+    <p style="margin: 0">Backup de <b>${esc(dataDoBackup(resumo.criado_em))}</b>, com o mês ${esc(resumo.ultimo_mes)} aberto.</p>
+    <p class="contagens">Contas: ${c.contas} · Grupos: ${c.grupos} · Categorias: ${c.categorias}<br>Atribuições: ${c.atribuicoes} · Transações: ${c.transacoes}</p>
+    <p class="aviso" style="color: var(--negativo)"><b>Isto substitui todo o orçamento deste aparelho.</b></p>
+    <p class="aviso" data-erro></p>
+    <div class="acoes">
+      <button type="button" data-cancelar>Cancelar</button>
+      <button type="button" class="principal" data-confirmar>Substituir</button>
+    </div>`);
+  const raiz = $("folha-raiz");
+  raiz.onclick = async (e) => {
+    const b = e.target.closest("button");
+    if (e.target.dataset.fechar !== undefined || (b && b.dataset.cancelar !== undefined)) return fecharFolha();
+    if (!b || b.dataset.confirmar === undefined) return;
+    try {
+      t.importar(texto);
+    } catch (err) {
+      return erroNaFolha(err);
+    }
+    fecharFolha();
     $("erro").textContent = "";
+    $("mes").value = resumo.ultimo_mes;
+    aviso.textContent = "Backup importado.";
     await aposMudanca();
-    evento.target.reset();
   };
 }
 
@@ -458,20 +550,29 @@ async function principal() {
   });
 
   $("plano").addEventListener("click", (e) => {
+    const nova = e.target.closest("[data-nova-categoria]");
+    if (nova) return abrirCriar(`Nova categoria em ${nova.dataset.novaCategoria}`, { placeholder: "Mercado" }, (nome) => t.criarCategoria(nome, nova.dataset.novaCategoria));
     const botao = e.target.closest("[data-categoria]");
     if (botao) abrirAtribuir(botao.dataset.categoria);
   });
+  $("novo-grupo").addEventListener("click", () => abrirCriar("Novo grupo", { placeholder: "Contas fixas" }, (nome) => t.criarGrupo(nome)));
+  $("nova-conta").addEventListener("click", () =>
+    abrirCriar("Nova conta", { comTipo: true, dica: "Escolha o tipo e dê um nome." }, (nome, tipo) => t.criarConta(nome, tipo))
+  );
   $("lancar-abrir").addEventListener("click", abrirLancar);
 
-  $("form-conta").addEventListener(
-    "submit",
-    acao(() => t.criarConta($("conta-nome").value.trim(), $("conta-tipo").value))
-  );
-  $("form-grupo").addEventListener("submit", acao(() => t.criarGrupo($("grupo-nome").value.trim())));
-  $("form-categoria").addEventListener(
-    "submit",
-    acao(() => t.criarCategoria($("categoria-nome").value.trim(), $("categoria-grupo").value))
-  );
+  $("exportar").addEventListener("click", exportarBackup);
+  $("importar").addEventListener("click", () => $("arquivo").click());
+  $("arquivo").addEventListener("change", async (e) => {
+    const arquivo = e.target.files[0];
+    e.target.value = "";
+    if (!arquivo) return;
+    try {
+      confirmarImportacao(await arquivo.text());
+    } catch (err) {
+      $("backup-aviso").textContent = `Não deu para ler o arquivo: ${err}`;
+    }
+  });
 
   render();
 }

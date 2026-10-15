@@ -98,10 +98,18 @@
     .acoes button { border: none; border-radius: 10px; padding: 13px 0; font-size: 16px; font-weight: 600; background: var(--linha); color: var(--texto); }
     .acoes button.principal { background: var(--destaque); color: var(--destaque-texto); }
 
-    /* Formulários de contas, grupos e categorias (saem para a tela nova no #18). */
-    form { display: grid; gap: 8px; }
-    @media (min-width: 560px) { form { grid-template-columns: 1fr 1fr auto; align-items: end; } }
-    button.enviar { background: var(--destaque); color: var(--destaque-texto); border: none; border-radius: 8px; padding: 10px 14px; font-weight: 600; }
+    /* Ações da tela: + categoria, + grupo, + conta e o backup. */
+    .cabeca-secao { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .cabeca-secao h2 { margin: 0; }
+    .acao { background: none; border: 1px solid var(--linha); border-radius: 8px; padding: 6px 10px; font-size: 14px; color: var(--destaque); font-weight: 600; }
+    .acao-pequena { background: none; border: 1px solid var(--linha); border-radius: 999px; padding: 1px 8px; margin-left: 6px; font-size: 12px; color: var(--destaque); font-weight: 600; white-space: nowrap; }
+    .acao-bloco { width: 100%; background: none; border: none; border-top: 1px solid var(--linha); padding: 12px 14px; text-align: left; color: var(--destaque); font-weight: 600; border-radius: 0; }
+    .tipos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .tipos button { background: var(--fundo); border: 1px solid var(--linha); border-radius: 10px; padding: 10px 6px; }
+    .tipos button.ligado { background: var(--destaque); color: var(--destaque-texto); border-color: transparent; font-weight: 600; }
+    .botoes-backup { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .botoes-backup button { border: 1px solid var(--linha); background: var(--fundo); border-radius: 10px; padding: 12px 6px; font-weight: 600; }
+    .contagens { margin: 0; font-variant-numeric: tabular-nums; }
     table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
     th, td { text-align: right; padding: 6px 4px; border-bottom: 1px solid var(--linha); font-size: 15px; }
     th:first-child, td:first-child { text-align: left; }
@@ -137,40 +145,29 @@
       <span>Categoria</span><span>Atribuído</span><span>Disponível</span>
     </div>
     <div id="plano"></div>
+    <button type="button" id="novo-grupo" class="acao-bloco">+ grupo</button>
   </section>
 
   <section>
-    <h2>Contas</h2>
+    <div class="cabeca-secao">
+      <h2>Contas</h2>
+      <button type="button" id="nova-conta" class="acao">+ conta</button>
+    </div>
     <table>
       <thead><tr><th>Conta</th><th>Saldo</th><th>Compensado</th></tr></thead>
       <tbody id="contas"></tbody>
     </table>
   </section>
 
-  <section>
-    <h2>Contas, grupos e categorias</h2>
-    <form id="form-conta">
-      <label>Nome da conta <input id="conta-nome" required></label>
-      <label>Tipo
-        <select id="conta-tipo">
-          <option value="corrente">Corrente</option>
-          <option value="poupanca">Poupança</option>
-          <option value="dinheiro">Dinheiro</option>
-          <option value="cartao">Cartão</option>
-          <option value="acompanhamento">Acompanhamento</option>
-        </select>
-      </label>
-      <button type="submit" class="enviar">Criar conta</button>
-    </form>
-    <form id="form-grupo" style="margin-top: 14px">
-      <label>Nome do grupo <input id="grupo-nome" placeholder="Contas fixas" required></label>
-      <button type="submit" class="enviar">Criar grupo</button>
-    </form>
-    <form id="form-categoria" style="margin-top: 14px">
-      <label>Grupo <select id="categoria-grupo" required></select></label>
-      <label>Nome da categoria <input id="categoria-nome" placeholder="Mercado" required></label>
-      <button type="submit" class="enviar">Criar categoria</button>
-    </form>
+  <section aria-labelledby="titulo-backup">
+    <h2 id="titulo-backup">Backup</h2>
+    <p class="suave" style="margin: 0 0 10px">Guarde uma cópia do orçamento em arquivo. Importar substitui tudo o que está neste aparelho.</p>
+    <div class="botoes-backup">
+      <button type="button" id="exportar">Exportar</button>
+      <button type="button" id="importar">Importar</button>
+    </div>
+    <input type="file" id="arquivo" accept="application/json,.json" hidden>
+    <div id="backup-aviso" class="aviso" role="status" style="margin-top: 8px"></div>
   </section>
 </main>
 
