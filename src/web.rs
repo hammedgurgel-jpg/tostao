@@ -21,6 +21,7 @@ use wasm_bindgen_futures::{future_to_promise, JsFuture};
 use web_sys::{Headers, Request, RequestInit, Response};
 
 use crate::api::{erro_do_servidor, ApiError, HttpResponse, Transport};
+use crate::aparelho::backup::resumo_do_backup;
 use crate::aparelho::{
     formatar_valor, ler_data, ler_mes, ler_valor, Aparelho, Destino, Erro, Estouro, LinhaDeConta, LinhaDoPlano, Plano,
     TipoDeConta,
@@ -59,6 +60,32 @@ impl Tostao {
         let aparelho = guarda.as_mut().ok_or_else(|| JsValue::from_str(OCUPADO))?;
         fazer(aparelho).map_err(erro_js)
     }
+
+    /// [`Tostao::importar`] com o erro do núcleo, para os testes (criar um
+    /// `JsValue` fora do navegador não funciona).
+    fn trocar_por_backup(&mut self, texto: &str) -> Result<(), Erro> {
+        let mut guarda = self.aparelho.borrow_mut();
+        let aparelho = guarda.as_mut().ok_or_else(|| Erro::Valor(OCUPADO.into()))?;
+        let novo = aparelho.importar_backup(texto)?;
+        *aparelho = novo;
+        Ok(())
+    }
+}
+
+/// Data e contagens de um backup, como texto JSON, para confirmar antes de
+/// importar: `{ criado_em, ultimo_mes, contagens: { contas, grupos, … } }`.
+#[wasm_bindgen(js_name = resumoDoBackup)]
+pub fn resumo_do_backup_js(texto: &str) -> Result<String, JsValue> {
+    let r = resumo_do_backup(texto).map_err(erro_js)?;
+    Ok(json!({
+        "criado_em": r.criado_em,
+        "ultimo_mes": r.ultimo_mes,
+        "contagens": {
+            "contas": r.contas, "grupos": r.grupos, "categorias": r.categorias,
+            "atribuicoes": r.atribuicoes, "transacoes": r.transacoes,
+        },
+    })
+    .to_string())
 }
 
 #[wasm_bindgen]
@@ -161,6 +188,19 @@ impl Tostao {
             };
             a.lancar(conta, data, valor, &destino).map(|_| ())
         })
+    }
+
+    /// O orçamento como arquivo de backup (texto JSON). `criado_em` é o
+    /// instante da exportação (ISO 8601); `ultimo_mes` é o mês que a tela mostra.
+    pub fn exportar(&self, criado_em: &str, ultimo_mes: &str) -> Result<String, JsValue> {
+        self.ler(|a| a.exportar_backup(criado_em, ultimo_mes))
+    }
+
+    /// Substitui o orçamento inteiro pelo do backup. Um arquivo recusado não
+    /// toca no orçamento guardado. Quem chama confirma antes, com o
+    /// [`resumoDoBackup`].
+    pub fn importar(&mut self, texto: &str) -> Result<(), JsValue> {
+        self.trocar_por_backup(texto).map_err(erro_js)
     }
 
     /// O plano do mês (`AAAA-MM`), calculado aqui, como texto JSON.
@@ -343,5 +383,55 @@ mod testes {
 
         let contas = contas_json(&a.contas().unwrap());
         assert_eq!(contas[0]["saldo"], json!(920_000));
+    }
+
+    /// Um orçamento pequeno pela ponte, com um lançamento em cada categoria.
+    fn orcamento_pela_ponte() -> Tostao {
+        let mut t = Tostao::novo_orcamento("Família");
+        t.criar_conta("Corrente", "corrente").unwrap();
+        t.criar_grupo("Contas").unwrap();
+        t.criar_categoria("Mercado", "Contas").unwrap();
+        t.lancar("Corrente", "1000", "2026-10-13", Some("A atribuir".into()), None).unwrap();
+        t.atribuir("Mercado", "50", "2026-10").unwrap();
+        t.lancar("Corrente", "-80", "2026-10-13", Some("Mercado".into()), None).unwrap();
+        t
+    }
+
+    /// Exportar, depois importar num orçamento vazio, devolve o mesmo plano e
+    /// os mesmos saldos; o resumo traz a data e as contagens.
+    #[test]
+    fn backup_ida_e_volta_pela_ponte() {
+        let original = orcamento_pela_ponte();
+        let arquivo = original.exportar("2026-10-15T12:00:00.000Z", "2026-10").unwrap();
+
+        let resumo: Value = serde_json::from_str(&resumo_do_backup_js(&arquivo).unwrap()).unwrap();
+        assert_eq!(resumo["criado_em"], "2026-10-15T12:00:00.000Z");
+        assert_eq!(resumo["ultimo_mes"], "2026-10");
+        assert_eq!(resumo["contagens"]["contas"], json!(1));
+        assert_eq!(resumo["contagens"]["transacoes"], json!(2));
+
+        let mut limpo = Tostao::novo_orcamento("Família");
+        limpo.importar(&arquivo).unwrap();
+        assert_eq!(limpo.plano("2026-10").unwrap(), original.plano("2026-10").unwrap());
+        assert_eq!(limpo.plano("2026-11").unwrap(), original.plano("2026-11").unwrap());
+        assert_eq!(limpo.contas().unwrap(), original.contas().unwrap());
+    }
+
+    /// Recusas pela ponte: nada muda no orçamento guardado.
+    #[test]
+    fn backup_recusado_pela_ponte_nao_toca_no_orcamento() {
+        let arquivo = orcamento_pela_ponte().exportar("2026-10-15T12:00:00.000Z", "2026-10").unwrap();
+        let mut t = orcamento_pela_ponte();
+        let antes = (t.plano("2026-10").unwrap(), t.contas().unwrap());
+
+        for ruim in [
+            "{ quebrado".to_string(),
+            arquivo.replace("\"formato\": \"tostao-backup\"", "\"formato\": \"outro\""),
+            arquivo.replace("\"versao_de_esquema\": 1", "\"versao_de_esquema\": 2"),
+            arquivo.replace("\"casas_decimais\": 2", "\"casas_decimais\": 3"),
+        ] {
+            assert!(t.trocar_por_backup(&ruim).is_err(), "aceitou: {ruim:.80}");
+            assert_eq!((t.plano("2026-10").unwrap(), t.contas().unwrap()), antes);
+        }
     }
 }
