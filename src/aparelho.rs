@@ -49,6 +49,8 @@ pub const NOME_A_ATRIBUIR: &str = "A atribuir";
 /// Grupo das categorias de pagamento do cartão.
 pub const GRUPO_PAGAMENTOS: &str = "grupo-pagamentos-cartao";
 
+pub mod backup;
+
 #[derive(Debug)]
 pub enum Erro {
     Arquivo(String),
@@ -328,20 +330,26 @@ impl Aparelho {
     /// Cria um orçamento novo, com a categoria de receita ("A atribuir").
     pub fn novo_orcamento(nome: &str) -> Self {
         let mut a = Self::para_orcamento(&novo_id());
-        let id = a.copia.orcamento.clone();
-        a.mudar("be_budget", json!({ "id": id, "budget_name": nome, "is_tombstone": false }));
-        a.mudar(
+        a.semear_base(nome);
+        a
+    }
+
+    /// Põe no orçamento o que todo orçamento tem: o nome, o grupo interno e
+    /// a categoria "A atribuir".
+    fn semear_base(&mut self, nome: &str) {
+        let id = self.copia.orcamento.clone();
+        self.mudar("be_budget", json!({ "id": id, "budget_name": nome, "is_tombstone": false }));
+        self.mudar(
             "be_master_categories",
             json!({ "id": GRUPO_INTERNO, "name": "Interno", "internal_name": "MasterCategory/__Internal__", "sortable_index": 0, "is_tombstone": false }),
         );
-        a.mudar(
+        self.mudar(
             "be_subcategories",
             json!({
                 "id": CATEGORIA_A_ATRIBUIR, "entities_master_category_id": GRUPO_INTERNO, "name": NOME_A_ATRIBUIR,
                 "internal_name": CATEGORIA_RECEITA, "sortable_index": 0, "is_tombstone": false
             }),
         );
-        a
     }
 
     /// Prepara um aparelho novo para um orçamento que já está no servidor;
