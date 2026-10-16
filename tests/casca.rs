@@ -90,31 +90,49 @@ fn arquivos_da_casca_existem_em_web() {
     }
 }
 
-/// `cache.addAll` é atômico: um arquivo que falta (o `pkg/`, por exemplo) não
-/// deixa guardar nem a página. A instalação guarda um arquivo de cada vez.
+/// A versão nova é instalada inteira ou não é: todos os arquivos são buscados
+/// antes de gravar, ignorando o cache HTTP, e só então vem `skipWaiting`. Um
+/// arquivo que falta derruba a instalação; a versão anterior segue valendo.
 #[test]
-fn instalacao_do_service_worker_nao_desiste_por_um_arquivo() {
+fn instalacao_guarda_a_casca_inteira_ou_nada() {
     let codigo = fs::read_to_string(web().join("sw.js")).expect("web/sw.js");
-    assert!(!codigo.contains("addAll"), "addAll é atômico: um arquivo faltando derruba a casca inteira");
+    assert!(!codigo.contains("addAll"), "addAll grava em lote e não é o que queremos aqui");
+    assert!(codigo.contains("cache: \"no-cache\""), "a busca da casca precisa ignorar o cache HTTP");
+    let gravacao = codigo.find("cache.put(").expect("cache.put na instalação");
+    let ativacao = codigo.find("self.skipWaiting()").expect("skipWaiting depois de gravar");
+    assert!(gravacao < ativacao, "skipWaiting antes da casca estar inteira guardada");
+    assert!(codigo.contains("Promise.all("), "a casca é buscada em conjunto");
+    assert!(codigo.contains("caches.delete(CACHE)"), "cache parcial precisa ser apagado se a instalação falhar");
 }
 
-/// O cache em tempo de execução é só para a casca: qualquer outro GET do
-/// mesmo site passa pela rede sem ser guardado.
+/// O cache é só para a casca: qualquer outro GET do mesmo site passa pela rede
+/// sem ser guardado, e toda resposta da casca sai do cache desta versão.
 #[test]
-fn cache_so_guarda_arquivos_da_casca() {
+fn resposta_da_casca_sai_so_do_cache_desta_versao() {
     let codigo = fs::read_to_string(web().join("sw.js")).expect("web/sw.js");
-    assert!(codigo.contains("CASCA.has(url)"), "cache.put sem checar se o pedido é da casca");
+    assert!(codigo.contains("CASCA.has(alvo)"), "resposta sem checar se o pedido é da casca");
+    assert!(codigo.contains("const CACHE = `tostao-casca-${VERSAO}`"), "o cache precisa levar o nome da versão");
+    assert!(!codigo.contains("stale"), "a casca não é mais stale-while-revalidate");
 }
 
-/// A casca se atualiza sozinha: quando já há cópia guardada, o service worker
-/// responde com ela e busca a versão nova na rede para a próxima abertura. Por
-/// isso não há versão de cache para editar à mão a cada mudança.
+/// A versão sai do build (`construir.ps1`, hash dos arquivos da casca), nunca
+/// de edição à mão. O navegador só instala a casca nova se `sw.js` mudar, por
+/// isso a versão está nele.
 #[test]
-fn casca_atualiza_em_segundo_plano_sem_versao_manual() {
+fn versao_da_casca_vem_do_build() {
     let codigo = fs::read_to_string(web().join("sw.js")).expect("web/sw.js");
-    assert!(!codigo.contains("tostao-casca-v"), "CACHE com versão à mão em sw.js");
-    assert!(codigo.contains("fetch(alvo)"), "sw.js não busca a casca na rede em segundo plano");
-    assert!(codigo.contains("evento.waitUntil("), "a gravação da casca nova precisa de waitUntil");
+    assert!(codigo.contains("const VERSAO = \""), "const VERSAO em sw.js");
+    let construir = fs::read_to_string(web().join("construir.ps1")).expect("web/construir.ps1");
+    assert!(construir.contains("const VERSAO"), "construir.ps1 precisa gravar a versão em sw.js");
+    assert!(construir.contains("Get-FileHash"), "a versão é o hash dos arquivos da casca");
+}
+
+/// O navegador não pode pegar o `sw.js` antigo do cache HTTP: sem isso, a
+/// checagem de versão nova demora até o max-age do Pages acabar.
+#[test]
+fn registro_do_service_worker_ignora_cache_http_do_script() {
+    let app = fs::read_to_string(web().join("app.js")).expect("web/app.js");
+    assert!(app.contains("updateViaCache: \"none\""), "register sem updateViaCache: \"none\"");
 }
 
 /// Cor do tema e ícones aparecem na página e no manifesto: os dois têm de bater.
