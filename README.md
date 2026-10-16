@@ -60,7 +60,9 @@ python -m http.server 8000
 ```
 
 Abra `http://127.0.0.1:8000/index.html`. O `construir.ps1` gera `web/pkg/`
-(ignorado pelo git).
+(ignorado pelo git) e grava a versão da casca em `web/sw.js` (a linha
+`const VERSAO`), um hash dos arquivos guardados. Por isso um build local deixa
+`web/sw.js` alterado no git: não o commite com a versão de um build.
 
 Para sincronizar pela página, suba o servidor com a origem dela
 (`--origem http://127.0.0.1:8000`, ver [Subir o servidor](#subir-o-servidor)),
