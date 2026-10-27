@@ -148,3 +148,26 @@ fn cabecalho_da_pagina_bate_com_o_manifesto() {
     let icone = m["icons"][0]["src"].as_str().expect("src do ícone");
     assert!(html.contains(&format!("href=\"{icone}\"")), "ícone da página diferente do manifesto");
 }
+
+/// Instalação pelo botão do próprio app: o navegador oferece a instalação
+/// (`beforeinstallprompt`), o botão aparece, e some quando o app já está
+/// instalado. O botão começa escondido, então quem não pode instalar não o vê.
+#[test]
+fn pagina_oferece_botao_para_instalar_que_some_depois_de_instalado() {
+    let html = fs::read_to_string(web().join("index.html")).expect("web/index.html");
+    let app = fs::read_to_string(web().join("app.js")).expect("web/app.js");
+    assert!(html.contains("<button type=\"button\" id=\"instalar\" hidden>Instalar o Tostão</button>"), "botão instalar escondido");
+    assert!(app.contains("\"beforeinstallprompt\""), "app.js não escuta beforeinstallprompt");
+    assert!(app.contains("e.preventDefault()"), "a oferta do navegador precisa ser guardada, não mostrada");
+    assert!(app.contains("oferta.prompt()"), "o botão precisa chamar prompt() da oferta");
+    assert!(app.contains("\"appinstalled\""), "app.js não escuta appinstalled");
+}
+
+/// Ao abrir o app instalado, pede ao navegador que não apague o orçamento
+/// guardado quando faltar espaço. Numa aba comum, não pede.
+#[test]
+fn app_instalado_pede_armazenamento_persistente() {
+    let app = fs::read_to_string(web().join("app.js")).expect("web/app.js");
+    assert!(app.contains("(display-mode: standalone)"), "sem checar se o app está instalado");
+    assert!(app.contains("navigator.storage.persist()"), "sem pedido de armazenamento persistente");
+}

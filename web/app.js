@@ -522,8 +522,45 @@ async function registrarCasca() {
   }
 }
 
+/** Instalação pelo botão do app: guarda a oferta do navegador e a usa ao tocar. */
+function ligarInstalacao() {
+  const botao = $("instalar");
+  if (instalado()) return;
+  let oferta = null;
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    oferta = e;
+    botao.hidden = false;
+  });
+  window.addEventListener("appinstalled", () => {
+    botao.hidden = true;
+  });
+  botao.addEventListener("click", () => {
+    if (!oferta) return;
+    oferta.prompt();
+    oferta = null;
+    botao.hidden = true;
+  });
+}
+
+function instalado() {
+  return matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+}
+
+/** Pede ao navegador que não apague o orçamento guardado quando faltar espaço. */
+async function pedirArmazenamentoPersistente() {
+  if (!instalado() || !navigator.storage?.persist) return;
+  try {
+    await navigator.storage.persist();
+  } catch (e) {
+    console.warn("Sem armazenamento persistente:", e);
+  }
+}
+
 async function principal() {
   registrarCasca();
+  ligarInstalacao();
+  pedirArmazenamentoPersistente();
   await init();
   t = await carregarAparelho();
   if (guardando) {
