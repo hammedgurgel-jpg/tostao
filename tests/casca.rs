@@ -98,9 +98,11 @@ fn instalacao_guarda_a_casca_inteira_ou_nada() {
     let codigo = fs::read_to_string(web().join("sw.js")).expect("web/sw.js");
     assert!(!codigo.contains("addAll"), "addAll grava em lote e não é o que queremos aqui");
     assert!(codigo.contains("cache: \"no-cache\""), "a busca da casca precisa ignorar o cache HTTP");
+    assert_eq!(codigo.matches("self.skipWaiting()").count(), 1, "skipWaiting só na mensagem de ativar");
     let gravacao = codigo.find("cache.put(").expect("cache.put na instalação");
-    let ativacao = codigo.find("self.skipWaiting()").expect("skipWaiting depois de gravar");
-    assert!(gravacao < ativacao, "skipWaiting antes da casca estar inteira guardada");
+    let ativacao = codigo.find("self.skipWaiting()").expect("skipWaiting");
+    let pedido = codigo.find("\"SKIP_WAITING\"").expect("ativação pedida pelo app");
+    assert!(gravacao < pedido && pedido < ativacao, "a versão nova espera o pedido, depois de gravar");
     assert!(codigo.contains("Promise.all("), "a casca é buscada em conjunto");
     assert!(codigo.contains("caches.delete(CACHE)"), "cache parcial precisa ser apagado se a instalação falhar");
 }
@@ -161,6 +163,21 @@ fn pagina_oferece_botao_para_instalar_que_some_depois_de_instalado() {
     assert!(app.contains("e.preventDefault()"), "a oferta do navegador precisa ser guardada, não mostrada");
     assert!(app.contains("oferta.prompt()"), "o botão precisa chamar prompt() da oferta");
     assert!(app.contains("\"appinstalled\""), "app.js não escuta appinstalled");
+}
+
+/// Versão nova da casca: o aviso aparece com o botão "atualizar", e a troca
+/// só acontece quando o usuário toca nele. O aviso volta a cada abertura
+/// enquanto a versão nova estiver esperando.
+#[test]
+fn versao_nova_mostra_aviso_e_so_ativa_no_toque() {
+    let html = fs::read_to_string(web().join("index.html")).expect("web/index.html");
+    let app = fs::read_to_string(web().join("app.js")).expect("web/app.js");
+    assert!(html.contains("id=\"atualizacao\" class=\"aviso-atualizacao\" hidden"), "aviso de atualização escondido");
+    assert!(html.contains("id=\"atualizar\""), "botão atualizar");
+    assert!(app.contains("\"updatefound\""), "app.js não acompanha a versão nova");
+    assert!(app.contains("registro.waiting"), "aviso precisa olhar a versão esperando");
+    assert!(app.contains("\"SKIP_WAITING\""), "o toque precisa pedir a ativação");
+    assert!(app.contains("\"controllerchange\""), "depois de trocar, a página recarrega");
 }
 
 /// Ao abrir o app instalado, pede ao navegador que não apague o orçamento

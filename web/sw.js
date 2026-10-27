@@ -47,9 +47,14 @@ async function instalar() {
     await caches.delete(CACHE);
     throw e;
   }
-  // Só chega aqui com a versão inteira guardada.
-  await self.skipWaiting();
+  // Só chega aqui com a versão inteira guardada. Ela fica esperando: a troca
+  // só acontece quando o usuário toca em "atualizar" (ver a mensagem abaixo).
 }
+
+// O app pede a ativação ao tocar em "atualizar"; sem isso a versão espera.
+self.addEventListener("message", (evento) => {
+  if (evento.data?.type === "SKIP_WAITING") self.skipWaiting();
+});
 
 self.addEventListener("activate", (evento) => {
   evento.waitUntil(
