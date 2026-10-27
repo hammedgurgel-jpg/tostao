@@ -513,7 +513,9 @@ function confirmarImportacao(texto) {
 async function registrarCasca() {
   if (!("serviceWorker" in navigator)) return;
   try {
-    await navigator.serviceWorker.register("sw.js");
+    // `updateViaCache: "none"`: a checagem do próprio sw.js ignora o cache HTTP,
+    // senão uma versão nova do sw.js demora até o max-age do Pages acabar.
+    await navigator.serviceWorker.register("sw.js", { updateViaCache: "none" });
   } catch (e) {
     // O app segue funcionando online; só não abre sem rede.
     console.warn("Sem casca offline:", e);
