@@ -515,15 +515,74 @@ async function registrarCasca() {
   try {
     // `updateViaCache: "none"`: a checagem do próprio sw.js ignora o cache HTTP,
     // senão uma versão nova do sw.js demora até o max-age do Pages acabar.
-    await navigator.serviceWorker.register("sw.js", { updateViaCache: "none" });
+    const registro = await navigator.serviceWorker.register("sw.js", { updateViaCache: "none" });
+    acompanharAtualizacao(registro);
   } catch (e) {
     // O app segue funcionando online; só não abre sem rede.
     console.warn("Sem casca offline:", e);
   }
 }
 
+/** Versão nova da casca: avisa e espera o toque em "atualizar" para trocar. */
+function acompanharAtualizacao(registro) {
+  const aviso = $("atualizacao");
+  const mostrar = () => {
+    aviso.hidden = false;
+  };
+  // Uma versão já esperando (de uma abertura anterior) mostra o aviso de novo.
+  if (registro.waiting && navigator.serviceWorker.controller) mostrar();
+  registro.addEventListener("updatefound", () => {
+    const nova = registro.installing;
+    nova.addEventListener("statechange", () => {
+      if (nova.state === "installed" && navigator.serviceWorker.controller) mostrar();
+    });
+  });
+  $("atualizar").addEventListener("click", () => {
+    if (!registro.waiting) return;
+    navigator.serviceWorker.addEventListener("controllerchange", () => location.reload(), { once: true });
+    registro.waiting.postMessage({ type: "SKIP_WAITING" });
+  });
+}
+
+/** Instalação pelo botão do app: guarda a oferta do navegador e a usa ao tocar. */
+function ligarInstalacao() {
+  const botao = $("instalar");
+  if (instalado()) return;
+  let oferta = null;
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    oferta = e;
+    botao.hidden = false;
+  });
+  window.addEventListener("appinstalled", () => {
+    botao.hidden = true;
+  });
+  botao.addEventListener("click", () => {
+    if (!oferta) return;
+    oferta.prompt();
+    oferta = null;
+    botao.hidden = true;
+  });
+}
+
+function instalado() {
+  return matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+}
+
+/** Pede ao navegador que não apague o orçamento guardado quando faltar espaço. */
+async function pedirArmazenamentoPersistente() {
+  if (!instalado() || !navigator.storage?.persist) return;
+  try {
+    await navigator.storage.persist();
+  } catch (e) {
+    console.warn("Sem armazenamento persistente:", e);
+  }
+}
+
 async function principal() {
   registrarCasca();
+  ligarInstalacao();
+  pedirArmazenamentoPersistente();
   await init();
   t = await carregarAparelho();
   if (guardando) {

@@ -103,6 +103,10 @@
     .cabeca-secao h2 { margin: 0; }
     .acao { background: none; border: 1px solid var(--linha); border-radius: 8px; padding: 6px 10px; font-size: 14px; color: var(--destaque); font-weight: 600; }
     .acao-pequena { background: none; border: 1px solid var(--linha); border-radius: 999px; padding: 1px 8px; margin-left: 6px; font-size: 12px; color: var(--destaque); font-weight: 600; white-space: nowrap; }
+    .aviso-atualizacao { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-radius: 10px; padding: 10px 14px; margin-bottom: 8px; background: var(--aviso-fundo); color: var(--aviso-cor); }
+    .aviso-atualizacao[hidden] { display: none; }
+    .aviso-atualizacao button { border: none; background: none; color: inherit; font-weight: 700; text-decoration: underline; padding: 4px; }
+    #instalar { width: 100%; border: none; border-radius: 10px; padding: 13px 0; font-size: 16px; font-weight: 600; background: var(--destaque); color: var(--destaque-texto); }
     .acao-bloco { width: 100%; background: none; border: none; border-top: 1px solid var(--linha); padding: 12px 14px; text-align: left; color: var(--destaque); font-weight: 600; border-radius: 0; }
     .tipos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .tipos button { background: var(--fundo); border: 1px solid var(--linha); border-radius: 10px; padding: 10px 6px; }
@@ -137,6 +141,11 @@
 
 <main>
   <div id="armazenamento" class="aviso" role="status"></div>
+  <button type="button" id="instalar" hidden>Instalar o Tostão</button>
+  <div id="atualizacao" class="aviso-atualizacao" hidden role="status">
+    <span>Nova versão do Tostão.</span>
+    <button type="button" id="atualizar">Atualizar</button>
+  </div>
   <div id="erro" class="aviso" role="alert"></div>
 
   <section aria-labelledby="titulo-plano" style="padding: 12px 0 0">
