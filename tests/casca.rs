@@ -188,3 +188,12 @@ fn app_instalado_pede_armazenamento_persistente() {
     assert!(app.contains("(display-mode: standalone)"), "sem checar se o app está instalado");
     assert!(app.contains("navigator.storage.persist()"), "sem pedido de armazenamento persistente");
 }
+
+/// Lighthouse (SEO) pede uma descrição na página; a faixa zerada precisa de
+/// contraste de texto (Lighthouse, acessibilidade): o texto usa a cor principal.
+#[test]
+fn pagina_tem_descricao_e_faixa_zerada_com_contraste() {
+    let html = fs::read_to_string(web().join("index.html")).expect("web/index.html");
+    assert!(html.contains("<meta name=\"description\" content=\""), "sem meta description");
+    assert!(html.contains(".faixa.zero { background: var(--linha); color: var(--texto); }"), "faixa zerada com texto cinza");
+}
